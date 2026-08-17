@@ -1,0 +1,2350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Plootchy-Net ⚡ Universal Network Analytics Platform</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body {
+      background: radial-gradient(circle at top left, #0f172a, #090d16 60%, #020617);
+      color: #f1f5f9;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(244, 114, 182, 0.2);
+      border-radius: 1rem;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px 0 rgba(244, 114, 182, 0.05);
+    }
+    .glass-card:hover {
+      border-color: rgba(244, 114, 182, 0.4);
+      box-shadow: 0 12px 35px -10px rgba(0, 0, 0, 0.6), 0 0 25px 0 rgba(244, 114, 182, 0.12);
+    }
+    .nav-btn {
+      padding: 0.6rem 1.2rem;
+      border-radius: 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 700;
+      transition: all 0.25s ease;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: 1px solid transparent;
+    }
+    .nav-btn.active {
+      background: linear-gradient(135deg, #db2777 0%, #ea580c 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 20px rgba(219, 39, 119, 0.4);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .nav-btn:hover:not(.active) {
+      background: rgba(30, 41, 59, 0.8);
+      color: #f8fafc;
+      border-color: rgba(148, 163, 184, 0.2);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 5px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #db2777;
+      border-radius: 4px;
+    }
+
+    .custom-dropdown-container {
+      position: relative;
+    }
+    .custom-dropdown-menu {
+      position: absolute;
+      z-index: 100 !important;
+      box-shadow: 0 20px 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(244, 114, 182, 0.25);
+    }
+
+    .custom-legend-bar {
+      scrollbar-width: thin;
+      scrollbar-color: #db2777 rgba(15, 23, 42, 0.6);
+      user-select: none;
+    }
+
+    .header-mascot-container {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-mascot-body {
+      width: 38px;
+      height: 36px;
+      background: linear-gradient(135deg, #38bdf8 0%, #a855f7 50%, #db2777 100%);
+      border-radius: 10px;
+      position: relative;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .robot-antenna {
+      position: absolute;
+      top: -7px;
+      width: 3px;
+      height: 8px;
+      background: #38bdf8;
+      border-radius: 2px;
+      box-shadow: 0 0 6px #38bdf8;
+    }
+    .robot-antenna::after {
+      content: '';
+      position: absolute;
+      top: -4px;
+      left: -2.5px;
+      width: 8px;
+      height: 8px;
+      background: #fde047;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #facc15;
+      animation: antennaPulse 1.2s infinite alternate;
+    }
+    @keyframes antennaPulse { 0% { opacity: 0.6; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1.2); } }
+    .robot-visor {
+      width: 28px;
+      height: 12px;
+      background: #090d16;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);
+      margin-top: -2px;
+    }
+    .robot-eye {
+      width: 5px;
+      height: 5px;
+      background: #38bdf8;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #38bdf8;
+      animation: eyeBlink 3s infinite;
+    }
+    @keyframes eyeBlink { 0%, 96%, 100% { transform: scaleY(1); } 98% { transform: scaleY(0.1); } }
+    .mascot-hands-flash {
+      position: absolute;
+      bottom: -7px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .mascot-hand {
+      width: 8px;
+      height: 8px;
+      background: #cbd5e1;
+      border-radius: 50%;
+      border: 1px solid #475569;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      z-index: 2;
+    }
+    .mascot-flash-big {
+      color: #fde047;
+      font-size: 18px;
+      font-weight: 900;
+      text-shadow: 0 0 12px #facc15, 0 0 20px #f59e0b;
+      animation: flashPulse 1.5s infinite alternate;
+      line-height: 1;
+      z-index: 1;
+    }
+    @keyframes flashPulse { 0% { transform: scale(1); filter: brightness(1); } 100% { transform: scale(1.25); filter: brightness(1.3); } }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col custom-scrollbar">
+
+  <!-- HEADER / NAVIGATION -->
+  <header class="border-b border-pink-500/20 bg-slate-950/90 sticky top-0 z-50 backdrop-blur-xl">
+    <div class="max-w-7xl mx-auto px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="header-mascot-container">
+          <div class="header-mascot-body">
+            <div class="robot-antenna"></div>
+            <div class="robot-visor">
+              <div class="robot-eye"></div>
+              <div class="robot-eye"></div>
+            </div>
+            <div class="mascot-hands-flash">
+              <div class="mascot-hand"></div>
+              <div class="mascot-flash-big">⚡</div>
+              <div class="mascot-hand"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h1 class="font-black text-xl text-white flex items-center gap-2 tracking-wider">
+            PLOOTCHY-NET <span class="text-pink-400">⚡</span>
+            <span class="text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-pink-950 text-pink-300 border border-pink-500/40">Universal Edition</span>
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex gap-2">
+        <button onclick="switchZone('import')" id="tab-import" class="nav-btn active">
+          <span>📁</span> 1. Import
+        </button>
+        <button onclick="switchZone('plot')" id="tab-plot" class="nav-btn">
+          <span>📊</span> 2. Charts
+        </button>
+        <button onclick="switchZone('actions')" id="tab-actions" class="nav-btn">
+          <span>📈</span> 3. Plotted Health & Alerting Report
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-5 py-6 flex-1 w-full space-y-6">
+
+    <!-- STEP 1: IMPORT DATA -->
+    <section id="zone-import" class="space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-black text-white tracking-tight flex items-center gap-2">
+            🚀 Step 1: Import Network Performance Data
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Upload XLSX, XLS, CSV, JSON, or TSV datasets (Name your files with 'site' or 'cell/sector' to auto-detect granularity).</p>
+        </div>
+      </div>
+
+      <!-- Dropzone -->
+      <div class="glass-card p-10 border-2 border-dashed border-pink-500/30 hover:border-pink-400/70 text-center flex flex-col items-center justify-center cursor-pointer transition-all group" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".xlsx, .xls, .csv, .json, .tsv, .txt" class="hidden" onchange="handleFileUpload(event)">
+        <div class="p-4 bg-pink-950/40 rounded-2xl border border-pink-500/30 group-hover:scale-110 transition-transform mb-3 shadow-inner">
+          <svg class="w-10 h-10 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        </div>
+        <h3 class="text-base font-bold text-white group-hover:text-pink-300 transition-colors">Drop network dataset file here or click to browse</h3>
+        <p class="text-xs text-slate-400 mt-1">Supports Excel, CSV, JSON, and TSV performance logs (2G, 3G, 4G, 5G)</p>
+        <span class="mt-4 px-3.5 py-1 bg-slate-950/80 border border-pink-500/30 rounded-full text-[11px] font-mono text-pink-300 shadow-sm" id="fileStatusText">No dataset imported</span>
+      </div>
+
+      <!-- Dataset Summary & Table -->
+      <div class="glass-card p-5 space-y-4">
+        <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center text-xs">
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block font-semibold">Total Rows</span>
+            <span class="font-black text-white text-base mt-0.5 block" id="stat-rows">0</span>
+          </div>
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block font-semibold">Unique Objects</span>
+            <span class="font-black text-pink-400 text-base mt-0.5 block" id="stat-sites">0</span>
+          </div>
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block font-semibold">Granularity</span>
+            <span class="font-black text-purple-400 text-base mt-0.5 block font-mono" id="stat-cells">N/A</span>
+          </div>
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block font-semibold">KPI Metrics</span>
+            <span class="font-black text-amber-400 text-base mt-0.5 block" id="stat-cols">0</span>
+          </div>
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+            <span class="text-slate-400 block font-semibold">Format</span>
+            <span class="font-black text-cyan-400 text-base mt-0.5 block" id="stat-format">None</span>
+          </div>
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex flex-col justify-center items-center">
+            <span class="text-slate-400 block font-semibold mb-1">Granularity Mode</span>
+            <div class="flex gap-1">
+              <button onclick="overrideGranularityMode('AUTO')" id="modeBtnAuto" class="px-2 py-0.5 bg-pink-950 text-pink-300 border border-pink-500/60 rounded text-[10px] font-bold">Auto</button>
+              <button onclick="overrideGranularityMode('SITE')" id="modeBtnSite" class="px-2 py-0.5 bg-slate-900 text-slate-400 border border-slate-700 rounded text-[10px] font-bold">Site</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border border-slate-800/80">
+          <table class="w-full text-[11px] text-left text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 font-mono uppercase border-b border-slate-800" id="tableHeader">
+              <tr><th class="p-3">Data Schema Preview</th></tr>
+            </thead>
+            <tbody id="tableBody" class="divide-y divide-slate-800/60 bg-slate-900/40 font-mono">
+              <tr><td class="p-6 text-center text-slate-500 italic">No dataset imported. Table is empty and will populate once a dataset file is loaded.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: CHARTS & OPERATIONAL CONTROLS -->
+    <section id="zone-plot" class="space-y-6 hidden">
+      <div>
+        <h2 class="text-xl font-black text-white tracking-tight flex items-center gap-2">
+          📊 Step 2: KPI Visualization & Operational Controls
+        </h2>
+        <p class="text-xs text-slate-400 mt-0.5">Filter specific sites/objects here. Step 3 will automatically audit and report on whatever charts and objects you have active.</p>
+      </div>
+
+      <!-- BATCH SELECTION MANAGER -->
+      <div class="glass-card p-4 border border-pink-500/30 bg-slate-950/70 rounded-xl space-y-3 relative z-40">
+        <div class="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-800 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="font-black text-cyan-400 tracking-wide flex items-center gap-1.5">
+              <span>📋</span> CHART SELECTION & BATCH MANAGER
+            </span>
+            <span class="px-2 py-0.5 bg-cyan-950 text-cyan-300 border border-cyan-800 rounded-full font-mono text-[10px]" id="batchStatusBadge">Active Charts Synced</span>
+          </div>
+        </div>
+
+        <div class="p-3 bg-slate-900/90 border border-amber-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2 font-bold text-amber-300">
+            <span>⚡</span> Batch Override Objects Across All Active Charts:
+          </div>
+          
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Sites Batch Filter Dropdown -->
+            <div class="custom-dropdown-container">
+              <button onclick="toggleDropdown('batchSiteDropdown', event)" id="batchSiteBtn" class="bg-slate-950 border border-slate-700 hover:border-pink-500 rounded-xl px-3 py-1.5 text-xs text-pink-300 font-mono flex items-center gap-2">
+                <span id="batchSiteLabel">Objects (All Selected)</span>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="batchSiteDropdown" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-72 bg-slate-950 border border-pink-500/50 rounded-xl p-3 max-h-80 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
+                  <span class="text-[11px] font-bold text-slate-300">Select Active Objects</span>
+                  <div class="flex gap-2 text-[10px]">
+                    <button onclick="toggleSelectAllBatchSites(true)" class="text-pink-400 hover:underline font-bold">Select All</button>
+                    <span class="text-slate-600">|</span>
+                    <button onclick="toggleSelectAllBatchSites(false)" class="text-slate-400 hover:underline font-bold">Unselect All</button>
+                  </div>
+                </div>
+                <!-- Site Search Input -->
+                <div class="mb-2">
+                  <input type="text" id="batchSiteSearch" placeholder="🔍 Search object..." onkeyup="filterBatchSiteList()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-pink-500 focus:outline-none font-mono">
+                </div>
+                <div id="batchSiteCheckboxes" class="space-y-1 text-[11px] max-h-48 overflow-y-auto custom-scrollbar"></div>
+              </div>
+            </div>
+
+            <!-- Cells Batch Filter Dropdown (Hidden if Site Level) -->
+            <div class="custom-dropdown-container" id="batchCellContainer">
+              <button onclick="toggleDropdown('batchCellDropdown', event)" id="batchCellBtn" class="bg-slate-950 border border-slate-700 hover:border-purple-500 rounded-xl px-3 py-1.5 text-xs text-purple-300 font-mono flex items-center gap-2">
+                <span id="batchCellLabel">Cells (All Selected)</span>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="batchCellDropdown" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-64 bg-slate-950 border border-purple-500/50 rounded-xl p-3 max-h-64 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
+                  <span class="text-[11px] font-bold text-slate-300">Select Active Cells</span>
+                  <div class="flex gap-2 text-[10px]">
+                    <button onclick="toggleSelectAllBatchCells(true)" class="text-purple-400 hover:underline font-bold">Select All</button>
+                    <span class="text-slate-600">|</span>
+                    <button onclick="toggleSelectAllBatchCells(false)" class="text-purple-400 hover:underline font-bold">Unselect All</button>
+                  </div>
+                </div>
+                <div id="batchCellCheckboxes" class="space-y-1 text-[11px]"></div>
+              </div>
+            </div>
+
+            <button onclick="applyBatchOverrideToAllCharts()" class="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-black rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5">
+              <span>✓</span> Apply to Active Charts
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- COLLAPSIBLE KPI SELECTION PANEL -->
+      <div class="glass-card p-4 space-y-3 relative z-30">
+        <div class="flex items-center justify-between cursor-pointer border-b border-slate-800 pb-2" onclick="toggleKpiPanel()">
+          <span class="text-xs font-bold text-pink-300 flex items-center gap-2">
+            <span>🎯</span> KPI Display Manager (<span id="selectedKpiCount">0</span> Selected)
+          </span>
+          <button class="text-xs font-mono text-pink-400 hover:text-pink-300 transition-colors flex items-center gap-1" id="kpiPanelToggleBtn">
+            <span id="kpiPanelIcon">▲</span> <span id="kpiPanelText">Collapse KPI Selector</span>
+          </button>
+        </div>
+
+        <div id="kpiSelectionContainerWrapper" class="transition-all duration-300 overflow-hidden space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-3 text-xs">
+            <span class="text-slate-400 text-[11px]">Check any KPI to generate a chart card:</span>
+            <div class="flex gap-2">
+              <button onclick="selectAllKPIs(true)" class="text-[11px] text-pink-400 hover:underline font-semibold">Select All</button>
+              <span class="text-slate-600">|</span>
+              <button onclick="selectAllKPIs(false)" class="text-[11px] text-slate-400 hover:underline">Clear All</button>
+            </div>
+          </div>
+          <div id="kpiCheckboxContainer" class="flex flex-wrap gap-2 text-xs text-slate-300 max-h-40 overflow-y-auto custom-scrollbar p-1">
+            <span class="text-xs text-slate-500 italic p-2">Import dataset to choose KPIs.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- THRESHOLD & CUTOVER SETTINGS BAR -->
+      <div class="glass-card p-4 space-y-3 relative z-20">
+        <div class="flex items-center justify-between cursor-pointer border-b border-slate-800 pb-2" onclick="toggleThresholdBar()">
+          <span class="text-xs font-bold text-amber-300 flex items-center gap-2">
+            <span>⚙️</span> KPI Thresholds, Line Types & Cutover Events (Swap / Modernization)
+          </span>
+          <button class="text-xs font-mono text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1" id="thresholdBarToggleBtn">
+            <span id="thresholdBarIcon">▼</span> <span id="thresholdBarText">Expand Threshold Bar</span>
+          </button>
+        </div>
+
+        <div id="thresholdBarContainerWrapper" class="hidden transition-all duration-300 overflow-hidden space-y-4 pt-1">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400 text-[11px]">Configure target/warning/critical lines, choose line styles (Solid, Dashed, Dotted), and manage X-axis time cutovers (Unselected by default):</span>
+            <button onclick="saveThresholdConfiguration()" class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-[11px] transition-all">
+              💾 Save Thresholds & Cutovers
+            </button>
+          </div>
+          <div id="thresholdSaveNotification" class="hidden text-xs text-emerald-400 font-mono font-bold bg-emerald-950/60 p-2 rounded-lg border border-emerald-800">
+            ✓ Threshold and Cutover configurations saved successfully!
+          </div>
+
+          <!-- CUTOVER EVENTS MANAGEMENT SUB-SECTION -->
+          <div class="p-3 bg-slate-900/90 border border-cyan-500/30 rounded-xl space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                <span>✂️</span> Vertical Cutover / Swap Lines (Unselected / Hidden by default)
+              </span>
+              <button onclick="addCutoverEvent()" class="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg font-bold text-[10px]">
+                + Add Cutover Event
+              </button>
+            </div>
+            <p class="text-[11px] text-slate-400">Add vertical lines pinned to specific X-axis timestamps to highlight network swaps, software upgrades, or modernization milestones.</p>
+            <div id="cutoverEventsList" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar"></div>
+          </div>
+
+          <!-- KPI THRESHOLDS MATRIX -->
+          <div id="kpiThresholdMatrix" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs max-h-72 overflow-y-auto custom-scrollbar p-1"></div>
+        </div>
+      </div>
+
+      <!-- OPERATIONAL CONTROLS TOOLBAR -->
+      <div class="glass-card p-3 border border-pink-500/30 bg-slate-950/90 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-lg relative z-20">
+        
+        <div class="flex flex-wrap items-center gap-2.5">
+          <button onclick="openNewChartModal()" class="px-3.5 py-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-black rounded-xl transition-all flex items-center gap-1.5 text-xs shadow-md shadow-pink-600/30">
+            <span class="text-base font-black">+</span> New Charts
+          </button>
+
+          <!-- BATCH EXPORT ALL CHARTS TO ONE EXCEL FILE -->
+          <button onclick="exportAllChartsBatch()" class="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black rounded-xl transition-all flex items-center gap-1.5 text-xs shadow-md shadow-cyan-600/30" title="Export all plotted charts into one single Excel workbook">
+            <span>📥</span> Export All Charts (Excel)
+          </button>
+
+          <!-- BATCH EXPORT ALL CHARTS AS PNG IMAGES -->
+          <button onclick="exportAllChartsAsImages()" class="px-3.5 py-2 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black rounded-xl transition-all flex items-center gap-1.5 text-xs shadow-md shadow-fuchsia-600/30" title="Download every plotted chart as a separate PNG image">
+            <span>🖼️</span> Export All Charts (Images)
+          </button>
+
+          <div class="custom-dropdown-container">
+            <button onclick="toggleDropdown('batchOpMenu', event)" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold rounded-xl transition-all flex items-center gap-1.5 text-xs">
+              <span>Batch Operation</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div id="batchOpMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-64 bg-slate-950 border border-pink-500/50 rounded-xl p-1.5 text-xs space-y-1" onclick="event.stopPropagation()">
+              <button onclick="openAdjustObjectsModal(); toggleDropdown('batchOpMenu');" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 hover:text-white flex items-center gap-2 transition-colors">
+                <span>🎯</span> Adjust Objects of Selected Charts
+              </button>
+              <button onclick="openAdjustKPIsModal(); toggleDropdown('batchOpMenu');" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 hover:text-white flex items-center gap-2 transition-colors">
+                <span>📊</span> Adjust KPI Metric of Selected Charts
+              </button>
+              <div class="border-t border-slate-800 my-1"></div>
+              <button onclick="deleteSelectedCharts(); toggleDropdown('batchOpMenu');" class="w-full text-left px-3 py-2 rounded-lg hover:bg-rose-950/80 text-rose-400 flex items-center gap-2 font-bold transition-colors">
+                <span>🗑️</span> Delete Selected Charts
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2 border-r border-slate-800 pr-3">
+            <button onclick="selectAllChartCards(true)" class="text-pink-400 hover:text-pink-300 font-bold text-xs hover:underline">
+              Select All
+            </button>
+            <span class="text-slate-700">|</span>
+            
+            <div class="custom-dropdown-container">
+              <button onclick="toggleDropdown('selectByTypeMenu', event)" class="text-pink-400 hover:text-pink-300 font-bold text-xs flex items-center gap-1">
+                <span>Select by Type</span>
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="selectByTypeMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-52 bg-slate-950 border border-pink-500/50 rounded-xl p-2 max-h-48 overflow-y-auto custom-scrollbar text-xs space-y-1" onclick="event.stopPropagation()">
+              </div>
+            </div>
+
+            <span class="text-slate-700">|</span>
+            <button onclick="selectAllChartCards(false)" class="text-slate-400 hover:text-slate-200 text-xs">
+              Clear Selection
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <span class="text-[10px] font-bold text-slate-400 px-1">Layout</span>
+            <button onclick="setGridLayout(1)" title="1 Column Layout" class="p-1 rounded hover:bg-pink-950 text-slate-300 hover:text-pink-300">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <button onclick="setGridLayout(2)" title="2 Columns Layout" class="p-1 rounded hover:bg-pink-950 text-slate-300 hover:text-pink-300">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h8M4 12h8M4 18h8M16 6h4M16 12h4M16 18h4"/></svg>
+            </button>
+            <button onclick="setGridLayout(3)" title="3 Columns Layout" class="p-1 rounded hover:bg-pink-950 text-slate-300 hover:text-pink-300">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h4M10 6h4M16 6h4M4 12h4M10 12h4M16 12h4M4 18h4M10 18h4M16 18h4"/></svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- MASTER AXIS, PRIMARY OBJECT COLUMN & CHART STRATEGY -->
+      <div class="glass-card p-4 space-y-3 relative z-10">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-xs">
+          <div>
+            <label class="block text-slate-300 mb-1 font-bold">X-Axis Timeline Column</label>
+            <select id="xColumnSelect" class="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-pink-500 focus:outline-none font-mono" onchange="renderMultiPlots()"></select>
+          </div>
+
+          <div>
+            <label class="block text-pink-300 mb-1 font-bold flex items-center gap-1.5">
+              <span>🏷️</span> Primary Object Column
+            </label>
+            <select id="siteKeySelect" class="w-full bg-slate-950/80 border border-pink-500/50 rounded-xl px-3 py-2 text-xs text-pink-200 focus:border-pink-400 focus:outline-none font-mono font-bold" onchange="changePrimarySiteKey(this.value)"></select>
+          </div>
+
+          <div>
+            <label class="block text-pink-400 mb-1 font-bold flex items-center gap-1.5">
+              <span>📈</span> Chart Type / Line Style
+            </label>
+            <select id="globalChartTypeSelect" class="w-full bg-slate-950/80 border border-pink-500/50 rounded-xl px-3 py-2 text-xs text-pink-200 focus:border-pink-400 focus:outline-none font-mono font-bold" onchange="renderMultiPlots()">
+              <option value="line_smooth">📈 Smooth Line (Curved Spline)</option>
+              <option value="line_smooth_nopoints" selected>✨ Smooth Line (No Points / Clean)</option>
+              <option value="line_straight">📏 Straight Line (Linear)</option>
+              <option value="line_straight_nopoints">✨ Straight Line (No Points / Clean)</option>
+              <option value="line_stepped">🪜 Stepped Line</option>
+              <option value="bar">📊 Vertical Bar Chart</option>
+              <option value="area">🏔️ Area Chart (Filled)</option>
+            </select>
+          </div>
+
+          <div id="granularityContainer">
+            <label class="block text-purple-300 mb-1 font-bold flex items-center gap-1.5">
+              <span>🎛️</span> Granularity Level
+            </label>
+            <select id="granularitySelect" class="w-full bg-slate-950/80 border border-purple-500/50 rounded-xl px-3 py-2 text-xs text-purple-200 focus:border-purple-400 focus:outline-none font-mono font-bold" onchange="renderMultiPlots()">
+              <option value="CELL" selected>📡 Cell Level (Detailed Sectors View)</option>
+              <option value="SITE">🏢 Site Level (Aggregated Site Average)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-slate-300 mb-1 font-bold">Chart Strategy Mode</label>
+            <select id="multiSiteStrategy" class="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-pink-500 focus:outline-none font-mono" onchange="renderMultiPlots()">
+              <option value="COMBINED_IN_CHART" selected>📈 Unified Chart per KPI (Clean Overlay)</option>
+              <option value="SPLIT_BY_SITE">⚡ Split Dedicated Layout per Object</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHARTS GRID CONTAINER -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 relative z-0" id="chartsGrid">
+        <div class="col-span-2 glass-card p-12 text-center text-slate-500 font-mono italic">
+          Import dataset in Step 1 to generate KPI plots.
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: PLOTTED CHARTS HEALTH & ALERTING REPORT -->
+    <section id="zone-actions" class="space-y-6 hidden">
+      <div>
+        <h2 class="text-xl font-black text-white tracking-tight flex items-center gap-2">
+          📈 Step 3: Plotted Charts Health & Alerting Report
+        </h2>
+        <p class="text-xs text-slate-400 mt-0.5">This report automatically analyzes active chart series, evaluates thresholds, and provides expert problem detection and optimization plans.</p>
+      </div>
+
+      <!-- REPORT GENERATOR CONTROL PANEL -->
+      <div class="glass-card p-6 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🎯</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Active Plotted Data Analysis & Optimization Plans</h3>
+              <p class="text-xs text-slate-400">Generates advanced diagnostic workflows and troubleshooting plans for currently visible charts.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="generatePlottedChartsAuditReport()" class="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white font-black rounded-xl shadow-md transition-all text-xs flex items-center gap-2">
+              <span>⚡</span> Audit Plotted Charts Now
+            </button>
+            <button onclick="exportAuditReportExcel()" title="Export Audit Report as Excel" class="px-3 py-2.5 bg-slate-950 border border-slate-800 hover:border-emerald-500 text-slate-300 hover:text-emerald-300 font-bold rounded-xl transition-all text-xs flex items-center gap-1.5">
+              <span>📊</span> Export Report (.xlsx)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUDIT REPORT RESULT CONTAINER -->
+      <div id="auditReportResultContainer" class="space-y-4">
+        <div class="glass-card p-10 text-center text-slate-500 font-mono italic">
+          Plot your desired sites and metrics in Step 2, then click 'Audit Plotted Charts Now' to analyze them.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- REUSABLE MODAL DIALOG CONTAINER -->
+  <div id="appModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] hidden flex items-center justify-center p-4">
+    <div class="glass-card max-w-2xl w-full p-6 space-y-5 border border-pink-500/40 bg-slate-950 shadow-2xl relative max-h-[90vh] flex flex-col justify-between" id="modalContent">
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT ENGINE -->
+  <script>
+    // GLOBAL STATE
+    let state = {
+      dataset: [],
+      activeZone: 'import',
+      chartInstances: {},
+      chartLocalConfigs: {},
+      kpiThresholds: {},
+      cutovers: [],
+      globalBatchSites: ['ALL'],
+      globalBatchCells: ['ALL'],
+      
+      fileType: '',
+      siteKey: '',
+      cellKey: null,
+      isSiteLevelOnly: false,
+      forcedGranularityMode: 'AUTO',
+      kpiColumns: [],
+      sites: [],
+      cells: []
+    };
+
+    // Close Dropdowns on Click Outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.custom-dropdown-container') && !e.target.closest('#appModal')) {
+        document.querySelectorAll('.custom-dropdown-menu').forEach(el => el.classList.add('hidden'));
+      }
+    });
+
+    function toggleDropdown(id, e) {
+      if (e) e.stopPropagation();
+      const target = document.getElementById(id);
+      if (!target) return;
+      const isHidden = target.classList.contains('hidden');
+      document.querySelectorAll('.custom-dropdown-menu').forEach(el => {
+        if (el.id !== id) el.classList.add('hidden');
+      });
+      if (isHidden) target.classList.remove('hidden');
+      else target.classList.add('hidden');
+    }
+
+    function switchZone(zoneId) {
+      state.activeZone = zoneId;
+      ['import', 'plot', 'actions'].forEach(id => {
+        const sec = document.getElementById(`zone-${id}`);
+        const btn = document.getElementById(`tab-${id}`);
+        if (id === zoneId) {
+          sec.classList.remove('hidden');
+          btn.classList.add('active');
+        } else {
+          sec.classList.add('hidden');
+          btn.classList.remove('active');
+        }
+      });
+
+      if (zoneId === 'plot') setTimeout(renderMultiPlots, 50);
+      if (zoneId === 'actions') generatePlottedChartsAuditReport();
+    }
+
+    function parseMetricValue(val, kpiName) {
+      if (val === undefined || val === null || val === '') return null;
+      let num = NaN;
+      if (typeof val === 'number') {
+        num = val;
+      } else {
+        let s = String(val).trim();
+        if (s.endsWith('%')) {
+          num = parseFloat(s.replace('%', ''));
+        } else {
+          num = parseFloat(s.replace(/,/g, ''));
+        }
+      }
+      return isNaN(num) ? null : num;
+    }
+
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const ext = file.name.split('.').pop().toLowerCase();
+      state.fileType = ext.toUpperCase();
+
+      const fileNameLower = file.name.toLowerCase();
+      if (fileNameLower.includes('site') && !fileNameLower.includes('cell') && !fileNameLower.includes('sector')) {
+        state.forcedGranularityMode = 'SITE';
+        updateGranularityButtonStyles('SITE');
+      } else if (fileNameLower.includes('cell') || fileNameLower.includes('sector')) {
+        state.forcedGranularityMode = 'CELL';
+        updateGranularityButtonStyles('AUTO');
+      }
+
+      document.getElementById('fileStatusText').innerText = `Loaded: ${file.name} (${state.forcedGranularityMode} mode)`;
+
+      const reader = new FileReader();
+      if (ext === 'json') {
+        reader.onload = function(evt) {
+          try {
+            state.dataset = JSON.parse(evt.target.result);
+            processParsedData();
+          } catch (err) { alert('Invalid JSON file format.'); }
+        };
+        reader.readAsText(file);
+      } else {
+        reader.onload = function(evt) {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            state.dataset = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
+            processParsedData();
+          } catch (err) { alert('Error parsing spreadsheet file.'); }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    function updateGranularityButtonStyles(mode) {
+      const btnAuto = document.getElementById('modeBtnAuto');
+      const btnSite = document.getElementById('modeBtnSite');
+      if (!btnAuto || !btnSite) return;
+
+      if (mode === 'SITE') {
+        btnSite.className = "px-2 py-0.5 bg-pink-950 text-pink-300 border border-pink-500/60 rounded text-[10px] font-bold";
+        btnAuto.className = "px-2 py-0.5 bg-slate-900 text-slate-400 border border-slate-700 rounded text-[10px] font-bold";
+      } else {
+        btnAuto.className = "px-2 py-0.5 bg-pink-950 text-pink-300 border border-pink-500/60 rounded text-[10px] font-bold";
+        btnSite.className = "px-2 py-0.5 bg-slate-900 text-slate-400 border border-slate-700 rounded text-[10px] font-bold";
+      }
+    }
+
+    function overrideGranularityMode(mode) {
+      state.forcedGranularityMode = mode;
+      updateGranularityButtonStyles(mode === 'SITE' ? 'SITE' : 'AUTO');
+      if (state.dataset.length > 0) processParsedData();
+    }
+
+    function processParsedData() {
+      if (!state.dataset || state.dataset.length === 0) return;
+
+      const keys = Object.keys(state.dataset[0]);
+      
+      state.siteKey = keys.find(k => {
+        const lk = k.toLowerCase();
+        return lk.includes('site') || lk.includes('enodeb') || lk.includes('node') || lk.includes('bts');
+      }) || keys[1] || keys[0];
+      
+      let potentialCellKey = null;
+      if (state.forcedGranularityMode !== 'SITE') {
+        potentialCellKey = keys.find(k => {
+          const lk = k.toLowerCase();
+          const isExcluded = lk.includes('availability') || lk.includes('rate') || lk.includes('ratio') || 
+                             lk.includes('util') || lk.includes('drop') || lk.includes('throughput') || 
+                             lk.includes('traffic') || lk.includes('capacity') || lk.includes('efficiency') || 
+                             lk.includes('critical') || lk.includes('target') || lk.includes('warning');
+          
+          const isCellIdentifier = lk.includes('cell') || lk.includes('sector') || lk.includes('eci') || 
+                                   lk.includes('ecgi') || lk.includes('cgi') || lk.includes('sect');
+          
+          return isCellIdentifier && !isExcluded;
+        });
+      }
+
+      if (state.forcedGranularityMode === 'SITE') {
+        state.cellKey = null;
+        state.isSiteLevelOnly = true;
+      } else if (potentialCellKey) {
+        state.cellKey = potentialCellKey;
+        state.isSiteLevelOnly = false;
+      } else {
+        state.cellKey = null;
+        state.isSiteLevelOnly = true;
+      }
+
+      const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time')) || keys[0];
+
+      state.kpiColumns = keys.filter(k => {
+        if (k === state.siteKey || k === state.cellKey || k === dateKey) return false;
+        return state.dataset.some(row => {
+          let val = row[k];
+          return parseMetricValue(val, k) !== null;
+        });
+      });
+
+      state.sites = Array.from(new Set(state.dataset.map(d => String(d[state.siteKey])))).filter(Boolean);
+      state.cells = state.cellKey ? Array.from(new Set(state.dataset.map(d => String(d[state.cellKey])))).filter(Boolean) : [];
+
+      state.globalBatchSites = ['ALL'];
+      state.globalBatchCells = ['ALL'];
+      state.chartLocalConfigs = {};
+
+      state.kpiColumns.forEach(kpi => {
+        if (!state.kpiThresholds[kpi]) {
+          const name = kpi.toLowerCase();
+          let target = 99.0, warning = 97.0, critical = 95.0;
+          // direction: 'lower_is_worse' means breaching = value DROPS below critical (e.g. Availability, Success Rate)
+          //            'higher_is_worse' means breaching = value RISES above critical (e.g. PRB Utilization, Drop Rate, Latency)
+          let direction = 'lower_is_worse';
+          if (name.includes('avail') || name.includes('valid')) { target = 99.9; warning = 98.0; critical = 95.0; direction = 'lower_is_worse'; }
+          else if (name.includes('cqi')) { target = 10.0; warning = 7.0; critical = 5.0; direction = 'lower_is_worse'; }
+          else if (name.includes('prb') || name.includes('util')) { target = 50.0; warning = 75.0; critical = 88.0; direction = 'higher_is_worse'; }
+          else if (name.includes('drop')) { target = 0.5; warning = 1.5; critical = 3.0; direction = 'higher_is_worse'; }
+          else if (name.includes('lat') || name.includes('delay') || name.includes('rtt')) { target = 20.0; warning = 50.0; critical = 100.0; direction = 'higher_is_worse'; }
+          else if (name.includes('interfer') || name.includes('noise')) { target = -105.0; warning = -100.0; critical = -95.0; direction = 'higher_is_worse'; }
+          else if (name.includes('tp') || name.includes('speed') || name.includes('rate') || name.includes('throughput')) { target = 25.0; warning = 10.0; critical = 5.0; direction = 'lower_is_worse'; }
+
+          state.kpiThresholds[kpi] = {
+            enable: false,
+            target, showTarget: false,
+            warning, showWarning: false,
+            critical, showCritical: false,
+            lineStyle: 'dashed',
+            direction
+          };
+        } else if (!state.kpiThresholds[kpi].direction) {
+          // Backfill direction for thresholds saved before this field existed
+          state.kpiThresholds[kpi].direction = 'lower_is_worse';
+        }
+      });
+
+      if (!state.cutovers || state.cutovers.length === 0) {
+        const allTimes = Array.from(new Set(state.dataset.map(d => d[dateKey]))).sort();
+        if (allTimes.length > 1) {
+          state.cutovers = [{
+            id: 'cut_' + Date.now(),
+            label: 'Network Modernization Swap',
+            time: allTimes[Math.floor(allTimes.length / 2)],
+            color: '#38bdf8',
+            style: 'dashed',
+            show: false
+          }];
+        }
+      }
+
+      document.getElementById('stat-rows').innerText = state.dataset.length;
+      document.getElementById('stat-sites').innerText = state.sites.length;
+      
+      const statCellsEl = document.getElementById('stat-cells');
+      const batchCellContainer = document.getElementById('batchCellContainer');
+      const granularityContainer = document.getElementById('granularityContainer');
+
+      if (state.isSiteLevelOnly) {
+        statCellsEl.innerText = '🏢 Site Level';
+        statCellsEl.className = 'font-black text-amber-400 text-base mt-0.5 block font-mono';
+        if (batchCellContainer) batchCellContainer.classList.add('hidden');
+        if (granularityContainer) granularityContainer.classList.add('hidden');
+      } else {
+        statCellsEl.innerText = `${state.cells.length} Cells`;
+        statCellsEl.className = 'font-black text-purple-400 text-base mt-0.5 block font-mono';
+        if (batchCellContainer) batchCellContainer.classList.remove('hidden');
+        if (granularityContainer) granularityContainer.classList.remove('hidden');
+      }
+
+      document.getElementById('stat-cols').innerText = state.kpiColumns.length;
+      document.getElementById('stat-format').innerText = state.fileType;
+
+      const header = document.getElementById('tableHeader');
+      const body = document.getElementById('tableBody');
+      header.innerHTML = `<tr>${keys.slice(0, 9).map(k => `<th class="p-3">${k}</th>`).join('')}</tr>`;
+      body.innerHTML = '';
+      state.dataset.slice(0, 5).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = keys.slice(0, 9).map(k => `<td class="p-3 text-xs">${row[k] ?? '-'}</td>`).join('');
+        body.appendChild(tr);
+      });
+
+      const siteKeySelect = document.getElementById('siteKeySelect');
+      if (siteKeySelect) {
+        siteKeySelect.innerHTML = '';
+        keys.forEach(k => {
+          siteKeySelect.innerHTML += `<option value="${k}" ${k === state.siteKey ? 'selected' : ''}>${k}</option>`;
+        });
+      }
+
+      renderBatchSiteCheckboxes();
+      if (!state.isSiteLevelOnly) renderBatchCellCheckboxes();
+      renderKpiThresholdMatrix();
+      renderCutoverEventsList();
+      renderSelectByTypeMenu();
+
+      const xSelect = document.getElementById('xColumnSelect');
+      xSelect.innerHTML = '';
+      keys.forEach(k => xSelect.innerHTML += `<option value="${k}" ${k === dateKey ? 'selected' : ''}>${k}</option>`);
+
+      const kpiContainer = document.getElementById('kpiCheckboxContainer');
+      kpiContainer.innerHTML = '';
+      state.kpiColumns.forEach((kpi, idx) => {
+        kpiContainer.innerHTML += `
+          <label class="flex items-center gap-2 px-3 py-1.5 bg-slate-950/80 border border-slate-800 hover:border-pink-500/50 rounded-xl cursor-pointer transition-all">
+            <input type="checkbox" value="${kpi}" class="kpi-checkbox rounded border-slate-700 bg-slate-900 text-pink-500 focus:ring-0" ${idx === 0 ? 'checked' : ''} onchange="updateSelectedKpiCount(); renderMultiPlots();">
+            <span class="text-xs font-mono font-bold">${kpi}</span>
+          </label>
+        `;
+      });
+
+      updateSelectedKpiCount();
+    }
+
+    function changePrimarySiteKey(newKey) {
+      state.siteKey = newKey;
+      state.sites = Array.from(new Set(state.dataset.map(d => String(d[state.siteKey])))).filter(Boolean);
+      state.globalBatchSites = ['ALL'];
+      state.chartLocalConfigs = {};
+      
+      document.getElementById('stat-sites').innerText = state.sites.length;
+      renderBatchSiteCheckboxes();
+      if (!state.isSiteLevelOnly) renderBatchCellCheckboxes();
+      renderMultiPlots();
+    }
+
+    function updateSelectedKpiCount() {
+      const selected = document.querySelectorAll('.kpi-checkbox:checked').length;
+      const cntLabel = document.getElementById('selectedKpiCount');
+      if (cntLabel) cntLabel.innerText = selected;
+    }
+
+    function addCutoverEvent() {
+      const xCol = document.getElementById('xColumnSelect').value;
+      const allTimes = Array.from(new Set(state.dataset.map(d => d[xCol]))).sort();
+      const defaultTime = allTimes[0] || '';
+
+      state.cutovers.push({
+        id: 'cut_' + Date.now(),
+        label: 'Modernization Swap',
+        time: defaultTime,
+        color: '#38bdf8',
+        style: 'dashed',
+        show: false
+      });
+      renderCutoverEventsList();
+      saveThresholdConfiguration();
+    }
+
+    function removeCutoverEvent(id) {
+      state.cutovers = state.cutovers.filter(c => c.id !== id);
+      renderCutoverEventsList();
+      saveThresholdConfiguration();
+    }
+
+    function updateCutoverField(id, field, value) {
+      const cut = state.cutovers.find(c => c.id === id);
+      if (cut) {
+        if (field === 'show') cut.show = value;
+        else cut[field] = value;
+      }
+    }
+
+    function renderCutoverEventsList() {
+      const container = document.getElementById('cutoverEventsList');
+      if (!container) return;
+
+      if (!state.cutovers || state.cutovers.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 italic p-1">No cutover events defined. Click '+ Add Cutover Event' to create one.</div>`;
+        return;
+      }
+
+      const xCol = document.getElementById('xColumnSelect') ? document.getElementById('xColumnSelect').value : '';
+      const allTimes = Array.from(new Set(state.dataset.map(d => d[xCol]))).sort();
+
+      container.innerHTML = state.cutovers.map(cut => `
+        <div class="flex flex-wrap items-center gap-2 p-2 bg-slate-950 border border-slate-800 rounded-xl">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="checkbox" ${cut.show ? 'checked' : ''} onchange="updateCutoverField('${cut.id}', 'show', this.checked)" class="rounded bg-slate-900 border-slate-700 text-cyan-400">
+            <span class="text-[10px] text-slate-300 font-bold">Show on Charts</span>
+          </label>
+          <input type="text" value="${cut.label}" onchange="updateCutoverField('${cut.id}', 'label', this.value)" placeholder="Event Name" class="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono">
+          <select onchange="updateCutoverField('${cut.id}', 'time', this.value)" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300 font-mono">
+            ${allTimes.map(t => `<option value="${t}" ${t === cut.time ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <select onchange="updateCutoverField('${cut.id}', 'style', this.value)" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 font-mono">
+            <option value="dashed" ${cut.style === 'dashed' ? 'selected' : ''}>Dashed</option>
+            <option value="solid" ${cut.style === 'solid' ? 'selected' : ''}>Solid</option>
+            <option value="dotted" ${cut.style === 'dotted' ? 'selected' : ''}>Dotted</option>
+          </select>
+          <input type="color" value="${cut.color}" onchange="updateCutoverField('${cut.id}', 'color', this.value)" class="w-6 h-6 bg-transparent cursor-pointer rounded">
+          <button onclick="removeCutoverEvent('${cut.id}')" class="text-rose-400 hover:text-rose-300 text-xs font-bold px-1.5 py-1">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function filterBatchSiteList() {
+      const term = document.getElementById('batchSiteSearch').value.toLowerCase();
+      const items = document.querySelectorAll('.batch-site-item');
+      items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(term)) item.classList.remove('hidden');
+        else item.classList.add('hidden');
+      });
+    }
+
+    function toggleSelectAllBatchSites(selectAll) {
+      if (selectAll) state.globalBatchSites = ['ALL'];
+      else state.globalBatchSites = [];
+      renderBatchSiteCheckboxes();
+      if (!state.isSiteLevelOnly) renderBatchCellCheckboxes();
+    }
+
+    function toggleSelectAllBatchCells(selectAll) {
+      if (selectAll) state.globalBatchCells = ['ALL'];
+      else state.globalBatchCells = [];
+      renderBatchCellCheckboxes();
+    }
+
+    function renderBatchSiteCheckboxes() {
+      const container = document.getElementById('batchSiteCheckboxes');
+      if (!container) return;
+
+      const isAllChecked = state.globalBatchSites.includes('ALL');
+
+      container.innerHTML = `
+        <label class="batch-site-item flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
+          <input type="checkbox" value="ALL" ${isAllChecked ? 'checked' : ''} onchange="onBatchSiteToggle('ALL')" class="rounded bg-slate-900 border-slate-700 text-pink-400 focus:ring-0">
+          <span class="font-bold text-pink-300">All Objects (${state.siteKey})</span>
+        </label>
+        <div class="border-t border-slate-800 my-1"></div>
+      ` + state.sites.map(s => `
+        <label class="batch-site-item flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
+          <input type="checkbox" value="${s}" ${isAllChecked || state.globalBatchSites.includes(s) ? 'checked' : ''} onchange="onBatchSiteToggle('${s}')" class="rounded bg-slate-900 border-slate-700 text-pink-400 focus:ring-0">
+          <span>${s}</span>
+        </label>
+      `).join('');
+
+      const lbl = document.getElementById('batchSiteLabel');
+      if (lbl) lbl.innerText = isAllChecked ? `Objects (All - ${state.siteKey})` : `Objects (${state.globalBatchSites.length} Selected)`;
+    }
+
+    function onBatchSiteToggle(site) {
+      if (site === 'ALL') {
+        state.globalBatchSites = ['ALL'];
+      } else {
+        state.globalBatchSites = state.globalBatchSites.filter(s => s !== 'ALL');
+        if (state.globalBatchSites.includes(site)) state.globalBatchSites = state.globalBatchSites.filter(s => s !== site);
+        else state.globalBatchSites.push(site);
+      }
+      renderBatchSiteCheckboxes();
+      if (!state.isSiteLevelOnly) renderBatchCellCheckboxes();
+    }
+
+    function renderBatchCellCheckboxes() {
+      const container = document.getElementById('batchCellCheckboxes');
+      if (!container || state.isSiteLevelOnly) return;
+
+      let availableCells = state.cells;
+      if (!state.globalBatchSites.includes('ALL') && state.globalBatchSites.length > 0) {
+        const filtered = state.dataset.filter(d => state.globalBatchSites.includes(String(d[state.siteKey])));
+        availableCells = Array.from(new Set(filtered.map(d => String(d[state.cellKey])))).filter(Boolean);
+      }
+
+      const isAllChecked = state.globalBatchCells.includes('ALL');
+
+      container.innerHTML = `
+        <label class="flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
+          <input type="checkbox" value="ALL" ${isAllChecked ? 'checked' : ''} onchange="onBatchCellToggle('ALL')" class="rounded bg-slate-900 border-slate-700 text-purple-400 focus:ring-0">
+          <span class="font-bold text-purple-300">All Cells</span>
+        </label>
+        <div class="border-t border-slate-800 my-1"></div>
+      ` + availableCells.map(c => `
+        <label class="flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
+          <input type="checkbox" value="${c}" ${isAllChecked || state.globalBatchCells.includes(c) ? 'checked' : ''} onchange="onBatchCellToggle('${c}')" class="rounded bg-slate-900 border-slate-700 text-purple-400 focus:ring-0">
+          <span>Cell ${c}</span>
+        </label>
+      `).join('');
+
+      const lbl = document.getElementById('batchCellLabel');
+      if (lbl) lbl.innerText = isAllChecked ? 'Cells (All Selected)' : `Cells (${state.globalBatchCells.length} Selected)`;
+    }
+
+    function onBatchCellToggle(cell) {
+      if (cell === 'ALL') state.globalBatchCells = ['ALL'];
+      else {
+        state.globalBatchCells = state.globalBatchCells.filter(c => c !== 'ALL');
+        if (state.globalBatchCells.includes(cell)) state.globalBatchCells = state.globalBatchCells.filter(c => c !== cell);
+        else state.globalBatchCells.push(cell);
+      }
+      renderBatchCellCheckboxes();
+    }
+
+    function applyBatchOverrideToAllCharts() {
+      Object.keys(state.chartLocalConfigs).forEach(chartId => {
+        state.chartLocalConfigs[chartId].sites = [...state.globalBatchSites];
+        if (!state.isSiteLevelOnly) state.chartLocalConfigs[chartId].cells = [...state.globalBatchCells];
+        updateChartInPlace(chartId);
+      });
+
+      const badge = document.getElementById('batchStatusBadge');
+      if (badge) {
+        badge.innerText = '✓ Batch Applied';
+        badge.className = 'px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-full font-mono text-[10px] animate-pulse';
+        setTimeout(() => {
+          badge.innerText = 'Active Charts Synced';
+          badge.className = 'px-2 py-0.5 bg-cyan-950 text-cyan-300 border border-cyan-800 rounded-full font-mono text-[10px]';
+        }, 2200);
+      }
+    }
+
+    // BATCH EXPORT ALL PLOTTED CHARTS INTO ONE EXCEL FILE (IN ONE TAKE)
+    function exportAllChartsBatch() {
+      const chartIds = Object.keys(state.chartInstances);
+      if (chartIds.length === 0) return alert('No active charts available to export.');
+
+      const wb = XLSX.utils.book_new();
+
+      chartIds.forEach((id, idx) => {
+        const chart = state.chartInstances[id];
+        const cfg = state.chartLocalConfigs[id];
+        if (!chart || !cfg) return;
+
+        const kpiName = cfg.kpi;
+        const labels = chart.data.labels || [];
+        const rows = [];
+
+        chart.data.datasets.forEach(dataset => {
+          dataset.data.forEach((val, dataIdx) => {
+            rows.push({
+              'Timestamp / X-Axis': labels[dataIdx] !== undefined ? labels[dataIdx] : '',
+              'Series / Object': dataset.label,
+              'KPI Metric': kpiName,
+              'Value': val !== null && val !== undefined ? val : ''
+            });
+          });
+        });
+
+        if (rows.length === 0) {
+          rows.push({ 'Timestamp / X-Axis': 'No Data', 'Series / Object': 'N/A', 'KPI Metric': kpiName, 'Value': '' });
+        }
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        
+        let sheetName = `Chart_${idx + 1}_${kpiName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        if (sheetName.length > 31) {
+          sheetName = sheetName.substring(0, 31);
+        }
+        
+        let uniqueName = sheetName;
+        let counter = 1;
+        while (wb.SheetNames.includes(uniqueName)) {
+          const suffix = `_${counter}`;
+          uniqueName = sheetName.substring(0, 31 - suffix.length) + suffix;
+          counter++;
+        }
+
+        XLSX.utils.book_append_sheet(wb, ws, uniqueName);
+      });
+
+      XLSX.writeFile(wb, 'PloochyNet_Plotted_Charts_Export.xlsx');
+    }
+
+    // Download every plotted chart as a separate PNG (staggered so the browser doesn't block multiple downloads)
+    function exportAllChartsAsImages() {
+      const chartIds = Object.keys(state.chartInstances);
+      if (chartIds.length === 0) return alert('No active charts available to export.');
+      chartIds.forEach((id, idx) => {
+        setTimeout(() => exportSingleChart(id), idx * 350);
+      });
+    }
+
+    function closeModal() {
+      document.getElementById('appModal').classList.add('hidden');
+    }
+
+    function filterModalSiteList() {
+      const term = document.getElementById('modalSiteSearch').value.toLowerCase();
+      const items = document.querySelectorAll('.modal-site-item');
+      items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(term)) item.classList.remove('hidden');
+        else item.classList.add('hidden');
+      });
+    }
+
+    function filterModalPairTable() {
+      const term = document.getElementById('modalPairSearch').value.toLowerCase();
+      const rows = document.querySelectorAll('.modal-pair-row');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        if (text.includes(term)) row.classList.remove('hidden');
+        else row.classList.add('hidden');
+      });
+    }
+
+    function openAdjustObjectsModal() {
+      const selectedIds = getCheckedChartIds();
+      if (selectedIds.length === 0) return alert('Please select at least one chart card using card checkboxes first.');
+
+      const modalContent = document.getElementById('modalContent');
+      
+      const siteOptionsHtml = state.sites.map(s => `
+        <label class="modal-site-item flex items-center gap-2.5 p-2 bg-slate-900 border border-slate-800 rounded-xl hover:border-pink-500/50 cursor-pointer">
+          <input type="checkbox" value="${s}" class="modal-site-checkbox rounded border-slate-700 bg-slate-950 text-pink-500 focus:ring-0" checked>
+          <span class="text-xs font-bold text-slate-200">${s}</span>
+        </label>
+      `).join('');
+
+      const cellSectionHtml = state.isSiteLevelOnly ? '' : `
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-black text-purple-300">Select Target Cells:</label>
+            <div class="flex gap-2 text-[11px]">
+              <button onclick="document.querySelectorAll('.modal-cell-checkbox').forEach(c=>c.checked=true)" class="text-purple-400 font-bold hover:underline">Select All</button>
+              <span class="text-slate-600">|</span>
+              <button onclick="document.querySelectorAll('.modal-cell-checkbox').forEach(c=>c.checked=false)" class="text-purple-400 font-bold hover:underline">Unselect All</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto custom-scrollbar p-1 border border-slate-800/80 rounded-xl bg-slate-950/50">
+            ${state.cells.map(c => `
+              <label class="flex items-center gap-2.5 p-2 bg-slate-900 border border-slate-800 rounded-xl hover:border-purple-500/50 cursor-pointer">
+                <input type="checkbox" value="${c}" class="modal-cell-checkbox rounded border-slate-700 bg-slate-950 text-purple-500 focus:ring-0" checked>
+                <span class="text-xs font-bold text-slate-200">Cell ${c}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      modalContent.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🎯</span>
+            <h3 class="font-black text-white text-sm">Batch Adjust Objects (${selectedIds.length} Charts Selected) - Using <span class="text-pink-300 font-mono">${state.siteKey}</span></h3>
+          </div>
+          <button onclick="closeModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        <div class="space-y-4 overflow-y-auto custom-scrollbar pr-1 max-h-[60vh]">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="text-xs font-black text-pink-300">Select Target Objects (${state.siteKey}):</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="modalSiteSearch" placeholder="🔍 Search object..." onkeyup="filterModalSiteList()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white focus:border-pink-500 focus:outline-none font-mono">
+                <button onclick="document.querySelectorAll('.modal-site-checkbox').forEach(c=>c.checked=true)" class="text-pink-400 text-[11px] font-bold hover:underline">Select All</button>
+                <span class="text-slate-600 text-[11px]">|</span>
+                <button onclick="document.querySelectorAll('.modal-site-checkbox').forEach(c=>c.checked=false)" class="text-pink-400 text-[11px] font-bold hover:underline">Unselect All</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1 border border-slate-800/80 rounded-xl bg-slate-950/50">${siteOptionsHtml}</div>
+          </div>
+
+          ${cellSectionHtml}
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button onclick="closeModal()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">Cancel</button>
+          <button onclick="applyObjectsModalChanges(['${selectedIds.join("','")}'])" class="px-5 py-2 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white font-black rounded-xl text-xs shadow-lg shadow-pink-500/30">
+            Apply Objects
+          </button>
+        </div>
+      `;
+
+      document.getElementById('appModal').classList.remove('hidden');
+    }
+
+    function applyObjectsModalChanges(selectedIds) {
+      const chosenSites = Array.from(document.querySelectorAll('.modal-site-checkbox:checked')).map(cb => cb.value);
+      let chosenCells = ['ALL'];
+      
+      if (!state.isSiteLevelOnly) {
+        chosenCells = Array.from(document.querySelectorAll('.modal-cell-checkbox:checked')).map(cb => cb.value);
+        if (chosenCells.length === 0) return alert('Please select at least one cell.');
+      }
+
+      if (chosenSites.length === 0) return alert('Please select at least one object.');
+
+      selectedIds.forEach(chartId => {
+        if (state.chartLocalConfigs[chartId]) {
+          state.chartLocalConfigs[chartId].sites = chosenSites.length === state.sites.length ? ['ALL'] : chosenSites;
+          if (!state.isSiteLevelOnly) {
+            state.chartLocalConfigs[chartId].cells = chosenCells.length === state.cells.length ? ['ALL'] : chosenCells;
+          }
+          updateChartInPlace(chartId);
+        }
+      });
+
+      closeModal();
+    }
+
+    function openAdjustKPIsModal() {
+      const selectedIds = getCheckedChartIds();
+      if (selectedIds.length === 0) return alert('Please select at least one chart card using card checkboxes first.');
+
+      const modalContent = document.getElementById('modalContent');
+
+      const kpiRadioHtml = state.kpiColumns.map((kpi, idx) => `
+        <label class="flex items-center gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl hover:border-pink-500/50 cursor-pointer transition-all">
+          <input type="radio" name="modalKpiChoice" value="${kpi}" ${idx === 0 ? 'checked' : ''} class="text-pink-500 bg-slate-950 border-slate-700 focus:ring-0">
+          <span class="text-xs font-mono font-bold text-slate-200">${kpi}</span>
+        </label>
+      `).join('');
+
+      modalContent.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">📊</span>
+            <h3 class="font-black text-white text-sm">Batch Adjust Counters (${selectedIds.length} Charts Selected)</h3>
+          </div>
+          <button onclick="closeModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        <div class="space-y-3 overflow-y-auto custom-scrollbar pr-1 max-h-[60vh]">
+          <p class="text-xs text-slate-400">Select new KPI metric to apply to all selected chart cards:</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">${kpiRadioHtml}</div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button onclick="closeModal()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">Cancel</button>
+          <button onclick="applyKpiModalChanges(['${selectedIds.join("','")}'])" class="px-5 py-2 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white font-black rounded-xl text-xs shadow-lg shadow-pink-500/30">
+            Apply Metric
+          </button>
+        </div>
+      `;
+
+      document.getElementById('appModal').classList.remove('hidden');
+    }
+
+    function applyKpiModalChanges(selectedIds) {
+      const selectedRadio = document.querySelector('input[name="modalKpiChoice"]:checked');
+      if (!selectedRadio) return;
+
+      const newKpi = selectedRadio.value;
+      selectedIds.forEach(chartId => {
+        if (state.chartLocalConfigs[chartId]) {
+          state.chartLocalConfigs[chartId].kpi = newKpi;
+          updateChartInPlace(chartId);
+        }
+      });
+
+      closeModal();
+    }
+
+    function openNewChartModal() {
+      if (state.kpiColumns.length === 0) return alert('Please import dataset first in Step 1.');
+
+      const modalContent = document.getElementById('modalContent');
+      let tableRowsHtml = '';
+      
+      if (state.isSiteLevelOnly) {
+        tableRowsHtml = state.sites.map(s => `
+          <tr class="modal-pair-row hover:bg-slate-900/80 transition-colors">
+            <td class="p-2.5 text-center">
+              <input type="checkbox" value="${s}" class="modal-table-pair-checkbox rounded border-slate-700 bg-slate-950 text-pink-500 focus:ring-0" checked>
+            </td>
+            <td class="p-2.5 font-mono text-pink-300 font-bold">${s}</td>
+          </tr>
+        `).join('');
+      } else {
+        const siteCellPairs = [];
+        state.dataset.forEach(d => {
+          const s = String(d[state.siteKey]);
+          const c = String(d[state.cellKey]);
+          if (!siteCellPairs.some(p => p.site === s && p.cell === c)) {
+            siteCellPairs.push({ site: s, cell: c });
+          }
+        });
+
+        tableRowsHtml = siteCellPairs.map(pair => `
+          <tr class="modal-pair-row hover:bg-slate-900/80 transition-colors">
+            <td class="p-2.5 text-center">
+              <input type="checkbox" value="${pair.site}___${pair.cell}" class="modal-table-pair-checkbox rounded border-slate-700 bg-slate-950 text-pink-500 focus:ring-0" checked>
+            </td>
+            <td class="p-2.5 font-mono text-pink-300 font-bold">${pair.site}</td>
+            <td class="p-2.5 font-mono text-purple-300 font-bold">Cell ${pair.cell}</td>
+          </tr>
+        `).join('');
+      }
+
+      const kpiSelectOptions = state.kpiColumns.map(kpi => `<option value="${kpi}">${kpi}</option>`).join('');
+
+      modalContent.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">➕</span>
+            <h3 class="font-black text-white text-sm">Add New Dedicated Chart Card</h3>
+          </div>
+          <button onclick="closeModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        <div class="space-y-4 overflow-y-auto custom-scrollbar pr-1 max-h-[65vh]">
+          <div>
+            <label class="block text-xs font-black text-pink-300 mb-1.5">Select Target Counter / KPI Metric:</label>
+            <select id="newChartKpiSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-pink-500 focus:outline-none font-mono font-bold">
+              ${kpiSelectOptions}
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="block text-xs font-black text-slate-200">${state.isSiteLevelOnly ? `Select Target Objects (${state.siteKey}):` : 'Select Objects & Cells Grid:'}</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="modalPairSearch" placeholder="🔍 Search object..." onkeyup="filterModalPairTable()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white focus:border-pink-500 focus:outline-none font-mono">
+                <button onclick="document.querySelectorAll('.modal-table-pair-checkbox').forEach(c=>c.checked=true)" class="text-pink-400 text-[11px] font-bold hover:underline">Select All</button>
+                <span class="text-slate-600 text-[11px]">|</span>
+                <button onclick="document.querySelectorAll('.modal-table-pair-checkbox').forEach(c=>c.checked=false)" class="text-pink-400 text-[11px] font-bold hover:underline">Unselect All</button>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-800 max-h-52 overflow-y-auto custom-scrollbar bg-slate-950/60">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-900 text-slate-400 uppercase font-mono text-[10px] sticky top-0 border-b border-slate-800">
+                  <tr>
+                    <th class="p-2.5 text-center">Include</th>
+                    <th class="p-2.5">Object Identifier (${state.siteKey})</th>
+                    ${state.isSiteLevelOnly ? '' : '<th class="p-2.5">Cell / Sector Name</th>'}
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60">
+                  ${tableRowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button onclick="closeModal()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">Cancel</button>
+          <button onclick="createNewChartFromModal()" class="px-5 py-2 bg-gradient-to-r from-pink-500 via-rose-500 to-purple-600 hover:from-pink-400 hover:to-rose-500 text-white font-black rounded-xl text-xs shadow-lg shadow-pink-500/30">
+            ⚡ Generate Chart Card
+          </button>
+        </div>
+      `;
+
+      document.getElementById('appModal').classList.remove('hidden');
+    }
+
+    function createNewChartFromModal() {
+      const kpi = document.getElementById('newChartKpiSelect').value;
+      const checkboxes = Array.from(document.querySelectorAll('.modal-table-pair-checkbox:checked'));
+
+      if (checkboxes.length === 0) return alert('Please check at least one object in the table.');
+
+      let targetSites = [];
+      let targetCells = ['ALL'];
+
+      if (state.isSiteLevelOnly) {
+        targetSites = checkboxes.map(cb => cb.value);
+      } else {
+        const checkedPairs = checkboxes.map(cb => {
+          const parts = cb.value.split('___');
+          return { site: parts[0], cell: parts[1] };
+        });
+        targetSites = Array.from(new Set(checkedPairs.map(p => p.site)));
+        targetCells = Array.from(new Set(checkedPairs.map(p => p.cell)));
+      }
+
+      const newId = `custom_chart_${Date.now()}`;
+      const grid = document.getElementById('chartsGrid');
+      
+      const cardMeta = { id: newId, kpi: kpi, strictSite: null, titleTag: 'Custom Selection' };
+      appendChartCardToGrid(cardMeta, grid);
+
+      setTimeout(() => {
+        if (state.chartLocalConfigs[newId]) {
+          state.chartLocalConfigs[newId].sites = targetSites;
+          state.chartLocalConfigs[newId].cells = targetCells;
+          updateChartInPlace(newId);
+        }
+      }, 80);
+
+      closeModal();
+    }
+
+    function toggleKpiPanel() {
+      const wrapper = document.getElementById('kpiSelectionContainerWrapper');
+      const icon = document.getElementById('kpiPanelIcon');
+      const text = document.getElementById('kpiPanelText');
+      if (wrapper.classList.contains('hidden')) {
+        wrapper.classList.remove('hidden');
+        icon.innerText = '▲';
+        text.innerText = 'Collapse KPI Selector';
+      } else {
+        wrapper.classList.add('hidden');
+        icon.innerText = '▼';
+        text.innerText = 'Expand KPI Selector';
+      }
+    }
+
+    function toggleThresholdBar() {
+      const wrapper = document.getElementById('thresholdBarContainerWrapper');
+      const icon = document.getElementById('thresholdBarIcon');
+      const text = document.getElementById('thresholdBarText');
+      if (wrapper.classList.contains('hidden')) {
+        wrapper.classList.remove('hidden');
+        icon.innerText = '▲';
+        text.innerText = 'Collapse Threshold Bar';
+      } else {
+        wrapper.classList.add('hidden');
+        icon.innerText = '▼';
+        text.innerText = 'Expand Threshold Bar';
+      }
+    }
+
+    function saveThresholdConfiguration() {
+      const notif = document.getElementById('thresholdSaveNotification');
+      notif.classList.remove('hidden');
+      setTimeout(() => notif.classList.add('hidden'), 3000);
+      Object.keys(state.chartInstances).forEach(id => {
+        if (state.chartInstances[id]) state.chartInstances[id].update();
+      });
+    }
+
+    function renderKpiThresholdMatrix() {
+      const matrix = document.getElementById('kpiThresholdMatrix');
+      if (!matrix) return;
+      matrix.innerHTML = '';
+
+      state.kpiColumns.forEach(kpi => {
+        const cfg = state.kpiThresholds[kpi] || { enable: false, target: 99.0, showTarget: false, warning: 97.0, showWarning: false, critical: 95.0, showCritical: false, lineStyle: 'dashed', direction: 'lower_is_worse' };
+        matrix.innerHTML += `
+          <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+              <span class="font-bold text-amber-300 font-mono text-xs">${kpi}</span>
+              <div class="flex items-center gap-2">
+                <select onchange="updateKpiThreshold('${kpi}', 'direction', this.value)" title="Which direction counts as a breach" class="bg-slate-950 border border-slate-700 text-slate-300 rounded px-1.5 py-0.5 text-[10px] font-mono">
+                  <option value="lower_is_worse" ${cfg.direction !== 'higher_is_worse' ? 'selected' : ''}>▼ Lower = Worse</option>
+                  <option value="higher_is_worse" ${cfg.direction === 'higher_is_worse' ? 'selected' : ''}>▲ Higher = Worse</option>
+                </select>
+                <select onchange="updateKpiThreshold('${kpi}', 'lineStyle', this.value)" class="bg-slate-950 border border-slate-700 text-slate-300 rounded px-1.5 py-0.5 text-[10px] font-mono">
+                  <option value="dashed" ${cfg.lineStyle === 'dashed' ? 'selected' : ''}>Dashed</option>
+                  <option value="solid" ${cfg.lineStyle === 'solid' ? 'selected' : ''}>Solid</option>
+                  <option value="dotted" ${cfg.lineStyle === 'dotted' ? 'selected' : ''}>Dotted</option>
+                </select>
+                <label class="flex items-center gap-1 cursor-pointer">
+                  <input type="checkbox" ${cfg.enable ? 'checked' : ''} onchange="updateKpiThreshold('${kpi}', 'enable', this.checked)" class="rounded bg-slate-950 border-slate-700 text-amber-400">
+                  <span class="text-[10px] text-slate-400 font-bold">Active</span>
+                </label>
+              </div>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-2 text-[10px]">
+              <div class="space-y-1 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                <div class="flex items-center justify-between">
+                  <span class="text-emerald-400 font-semibold">Target</span>
+                  <input type="checkbox" ${cfg.showTarget ? 'checked' : ''} onchange="updateKpiThreshold('${kpi}', 'showTarget', this.checked)" title="Show/Hide Target Line" class="rounded bg-slate-900 border-slate-700 text-emerald-400">
+                </div>
+                <input type="number" step="0.1" value="${cfg.target}" onchange="updateKpiThreshold('${kpi}', 'target', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-white font-mono text-right">
+              </div>
+
+              <div class="space-y-1 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                <div class="flex items-center justify-between">
+                  <span class="text-amber-400 font-semibold">Warning</span>
+                  <input type="checkbox" ${cfg.showWarning ? 'checked' : ''} onchange="updateKpiThreshold('${kpi}', 'showWarning', this.checked)" title="Show/Hide Warning Line" class="rounded bg-slate-900 border-slate-700 text-amber-400">
+                </div>
+                <input type="number" step="0.1" value="${cfg.warning}" onchange="updateKpiThreshold('${kpi}', 'warning', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-white font-mono text-right">
+              </div>
+
+              <div class="space-y-1 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                <div class="flex items-center justify-between">
+                  <span class="text-rose-400 font-semibold">Critical</span>
+                  <input type="checkbox" ${cfg.showCritical ? 'checked' : ''} onchange="updateKpiThreshold('${kpi}', 'showCritical', this.checked)" title="Show/Hide Critical Line" class="rounded bg-slate-900 border-slate-700 text-rose-400">
+                </div>
+                <input type="number" step="0.1" value="${cfg.critical}" onchange="updateKpiThreshold('${kpi}', 'critical', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-white font-mono text-right">
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function updateKpiThreshold(kpi, field, val) {
+      if (!state.kpiThresholds[kpi]) return;
+      if (['enable', 'showTarget', 'showWarning', 'showCritical'].includes(field)) {
+        state.kpiThresholds[kpi][field] = val;
+      } else if (field === 'lineStyle' || field === 'direction') {
+        state.kpiThresholds[kpi][field] = val;
+      } else {
+        state.kpiThresholds[kpi][field] = parseFloat(val) || 0;
+      }
+
+      Object.keys(state.chartInstances).forEach(id => {
+        if (state.chartInstances[id]) state.chartInstances[id].update();
+      });
+    }
+
+    function getCheckedChartIds() {
+      return Array.from(document.querySelectorAll('.chart-card-select:checked')).map(cb => cb.dataset.chartId);
+    }
+
+    function selectAllChartCards(select) {
+      document.querySelectorAll('.chart-card-select').forEach(cb => cb.checked = select);
+    }
+
+    function renderSelectByTypeMenu() {
+      const container = document.getElementById('selectByTypeMenu');
+      if (!container) return;
+      container.innerHTML = state.kpiColumns.map(kpi => `
+        <button onclick="selectChartsByKpiType('${kpi}')" class="w-full text-left px-2.5 py-1.5 rounded hover:bg-pink-950 text-slate-300 hover:text-white font-mono text-[11px] truncate">
+          ${kpi}
+        </button>
+      `).join('');
+    }
+
+    function selectChartsByKpiType(kpi) {
+      document.querySelectorAll('.chart-card-select').forEach(cb => {
+        const id = cb.dataset.chartId;
+        const cfg = state.chartLocalConfigs[id];
+        cb.checked = (cfg && cfg.kpi === kpi);
+      });
+    }
+
+    function setGridLayout(cols) {
+      const grid = document.getElementById('chartsGrid');
+      if (!grid) return;
+      if (cols === 1) grid.className = 'grid grid-cols-1 gap-6 relative z-0';
+      else if (cols === 2) grid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-6 relative z-0';
+      else if (cols === 3) grid.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-0';
+    }
+
+    function deleteSelectedCharts() {
+      const selectedIds = getCheckedChartIds();
+      if (selectedIds.length === 0) return alert('Please select at least one chart to delete.');
+      
+      if (confirm(`Delete ${selectedIds.length} selected chart(s)?`)) {
+        selectedIds.forEach(id => {
+          if (state.chartInstances[id]) {
+            state.chartInstances[id].destroy();
+            delete state.chartInstances[id];
+          }
+          delete state.chartLocalConfigs[id];
+          const el = document.getElementById(`card_${id}`);
+          if (el) el.remove();
+        });
+      }
+    }
+
+    function selectAllKPIs(select) {
+      document.querySelectorAll('.kpi-checkbox').forEach(cb => cb.checked = select);
+      updateSelectedKpiCount();
+      renderMultiPlots();
+    }
+
+    function toggleLegendDisplay(chartId) {
+      const legendBar = document.getElementById(`legend_bar_${chartId}`);
+      const btn = document.getElementById(`btn_legend_toggle_${chartId}`);
+      if (!legendBar) return;
+
+      if (legendBar.classList.contains('hidden')) {
+        legendBar.classList.remove('hidden');
+        if (btn) {
+          btn.classList.add('border-pink-500/60', 'bg-pink-950/40', 'text-pink-300');
+          btn.classList.remove('border-slate-800', 'bg-slate-950', 'text-slate-400');
+        }
+      } else {
+        legendBar.classList.add('hidden');
+        if (btn) {
+          btn.classList.remove('border-pink-500/60', 'bg-pink-950/40', 'text-pink-300');
+          btn.classList.add('border-slate-800', 'bg-slate-950', 'text-slate-400');
+        }
+      }
+    }
+
+    function renderCustomHtmlLegend(chartId) {
+      const chart = state.chartInstances[chartId];
+      const legendBar = document.getElementById(`legend_bar_${chartId}`);
+      if (!chart || !legendBar) return;
+
+      legendBar.innerHTML = '';
+
+      chart.data.datasets.forEach((dataset, idx) => {
+        const isHidden = !chart.isDatasetVisible(idx);
+        
+        const badge = document.createElement('button');
+        badge.className = `flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-mono cursor-pointer transition-all flex-shrink-0 select-none ${
+          isHidden 
+            ? 'bg-slate-950/60 border-slate-800/80 text-slate-500 line-through opacity-50' 
+            : 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:border-pink-500/70 shadow-sm'
+        }`;
+
+        badge.innerHTML = `
+          <span class="w-3 h-3 rounded-sm border inline-block flex-shrink-0" style="background-color: ${dataset.borderColor}; border-color: ${dataset.borderColor}"></span>
+          <span class="font-bold whitespace-nowrap">${dataset.label}</span>
+        `;
+
+        badge.onclick = (e) => {
+          e.stopPropagation();
+          chart.setDatasetVisibility(idx, !chart.isDatasetVisible(idx));
+          chart.update();
+          renderCustomHtmlLegend(chartId);
+        };
+
+        legendBar.appendChild(badge);
+      });
+    }
+
+    function showPointDetailsModal(pointInfo) {
+      const modalContent = document.getElementById('modalContent');
+      const xCol = document.getElementById('xColumnSelect').value;
+
+      let matchedRows = state.dataset.filter(d => String(d[xCol]) === String(pointInfo.timestamp));
+      if (!state.isSiteLevelOnly && pointInfo.series.includes('•')) {
+        const parts = pointInfo.series.split('•').map(s => s.trim());
+        const targetSite = parts[0];
+        const targetCell = parts[1].replace('Cell ', '');
+        matchedRows = matchedRows.filter(d => String(d[state.siteKey]) === targetSite && String(d[state.cellKey]) === targetCell);
+      } else {
+        matchedRows = matchedRows.filter(d => String(d[state.siteKey]) === pointInfo.series || pointInfo.series.includes(String(d[state.siteKey])));
+      }
+
+      const keys = state.dataset.length > 0 ? Object.keys(state.dataset[0]) : [];
+
+      modalContent.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">📍</span>
+            <h3 class="font-black text-white text-sm">Selected Data Point Details Inspector</h3>
+          </div>
+          <button onclick="closeModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        <div class="space-y-4 overflow-y-auto custom-scrollbar pr-1 max-h-[65vh]">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+              <span class="text-slate-400 block">Timestamp / X-Axis</span>
+              <span class="font-bold text-cyan-300 text-sm mt-0.5 block font-mono">${pointInfo.timestamp}</span>
+            </div>
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+              <span class="text-slate-400 block">Object / Series</span>
+              <span class="font-bold text-pink-300 text-sm mt-0.5 block font-mono">${pointInfo.series}</span>
+            </div>
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+              <span class="text-slate-400 block">KPI Metric</span>
+              <span class="font-bold text-amber-300 text-sm mt-0.5 block font-mono">${pointInfo.kpi}</span>
+            </div>
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+              <span class="text-slate-400 block">Metric Value</span>
+              <span class="font-black text-emerald-400 text-base mt-0.5 block font-mono">${pointInfo.value}</span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <h4 class="text-xs font-bold text-slate-300 uppercase font-mono">Matched Raw Dataset Records (${matchedRows.length} found)</h4>
+            <div class="overflow-x-auto rounded-xl border border-slate-800 max-h-56 overflow-y-auto custom-scrollbar bg-slate-950/80">
+              <table class="w-full text-[11px] text-left text-slate-300 font-mono">
+                <thead class="bg-slate-900 text-slate-400 uppercase sticky top-0 border-b border-slate-800">
+                  <tr>${keys.map(k => `<th class="p-2.5">${k}</th>`).join('')}</tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60">
+                  ${matchedRows.length > 0 ? matchedRows.map(row => `
+                    <tr class="hover:bg-slate-900/60">
+                      ${keys.map(k => `<td class="p-2.5">${row[k] ?? '-'}</td>`).join('')}
+                    </tr>
+                  `).join('') : `<tr><td colspan="${keys.length}" class="p-4 text-center text-slate-500 italic">No direct raw row match found for this point.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button onclick="closeModal()" class="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">Close Inspector</button>
+        </div>
+      `;
+
+      document.getElementById('appModal').classList.remove('hidden');
+    }
+
+    // ENHANCED CHART PLUGIN: DRAWING THRESHOLDS & VERTICAL CUTOVER LINES + OSS TOOLTIP
+    const thresholdPlugin = {
+      id: 'thresholdPlugin',
+      afterDraw: (chart) => {
+        if (state.activeZone !== 'plot') return;
+        const ctx = chart.ctx;
+        const yAxis = chart.scales.y;
+        const xAxis = chart.scales.x;
+        if (!yAxis || !xAxis) return;
+
+        const kpi = chart.config.options.customKpiName;
+        const cfg = state.kpiThresholds[kpi];
+        if (cfg && cfg.enable) {
+          let dashPattern = [5, 4];
+          if (cfg.lineStyle === 'solid') dashPattern = [];
+          else if (cfg.lineStyle === 'dotted') dashPattern = [2, 3];
+
+          const drawHorizontalLine = (val, color, label, show) => {
+            if (!show || isNaN(val)) return;
+            const y = yAxis.getPixelForValue(val);
+            if (y < chart.chartArea.top || y > chart.chartArea.bottom) return;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash(dashPattern);
+            ctx.moveTo(chart.chartArea.left, y);
+            ctx.lineTo(chart.chartArea.right, y);
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.font = '10px sans-serif';
+            ctx.fillText(`${label}: ${val}`, chart.chartArea.right - 70, y - 4);
+            ctx.restore();
+          };
+
+          drawHorizontalLine(cfg.target, '#34d399', 'Target', cfg.showTarget);
+          drawHorizontalLine(cfg.warning, '#fbbf24', 'Warning', cfg.showWarning);
+          drawHorizontalLine(cfg.critical, '#f87171', 'Critical', cfg.showCritical);
+        }
+
+        if (state.cutovers && state.cutovers.length > 0) {
+          state.cutovers.forEach(cut => {
+            if (!cut.show) return;
+            const xValIndex = chart.data.labels.indexOf(cut.time);
+            if (xValIndex === -1) return;
+
+            const xPx = xAxis.getPixelForValue(xValIndex);
+            if (xPx < chart.chartArea.left || xPx > chart.chartArea.right) return;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.strokeStyle = cut.color || '#38bdf8';
+            ctx.lineWidth = 2;
+            let cutDash = [4, 4];
+            if (cut.style === 'solid') cutDash = [];
+            else if (cut.style === 'dotted') cutDash = [2, 2];
+            ctx.setLineDash(cutDash);
+            ctx.moveTo(xPx, chart.chartArea.top);
+            ctx.lineTo(xPx, chart.chartArea.bottom);
+            ctx.stroke();
+
+            ctx.fillStyle = cut.color || '#38bdf8';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillText(`⚡ ${cut.label}`, xPx + 4, chart.chartArea.top + 14);
+            ctx.restore();
+          });
+        }
+      }
+    };
+
+    function appendChartCardToGrid(cardMeta, gridContainer) {
+      const id = cardMeta.id;
+      const kpi = cardMeta.kpi;
+
+      const card = document.createElement('div');
+      card.id = `card_${id}`;
+      card.className = 'glass-card p-4 space-y-3 relative flex flex-col justify-between border border-pink-500/20';
+
+      card.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div class="flex items-center gap-2">
+            <input type="checkbox" data-chart-id="${id}" class="chart-card-select rounded bg-slate-900 border-slate-700 text-pink-500 focus:ring-0">
+            <div>
+              <h3 class="font-black text-white text-xs flex items-center gap-1.5 font-mono">
+                <span>📈</span> ${kpi}
+              </h3>
+              <span class="text-[10px] text-pink-400 font-mono">${cardMeta.titleTag || 'Unified View'}</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="toggleLegendDisplay('${id}')" id="btn_legend_toggle_${id}" class="px-2 py-1 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-lg text-[10px] font-mono transition-all flex items-center gap-1">
+              <span>🏷️ Legend</span>
+            </button>
+            <div class="custom-dropdown-container relative">
+              <button onclick="toggleDropdown('exportMenu_${id}', event)" title="Export Chart" class="p-1.5 bg-slate-950 border border-slate-800 hover:border-pink-500 text-slate-300 rounded-lg text-xs">
+                📥
+              </button>
+              <div id="exportMenu_${id}" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-44 bg-slate-950 border border-pink-500/50 rounded-xl p-1.5 text-xs space-y-1 z-20" onclick="event.stopPropagation()">
+                <button onclick="exportSingleChart('${id}'); toggleDropdown('exportMenu_${id}')" class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 hover:text-white font-mono text-[11px] flex items-center gap-1.5">🖼️ Image (PNG)</button>
+                <button onclick="exportSingleChartExcel('${id}'); toggleDropdown('exportMenu_${id}')" class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 hover:text-white font-mono text-[11px] flex items-center gap-1.5">📊 Excel (.xlsx)</button>
+                <button onclick="exportSingleChartCSV('${id}'); toggleDropdown('exportMenu_${id}')" class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 hover:text-white font-mono text-[11px] flex items-center gap-1.5">📄 CSV</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="legend_bar_${id}" class="custom-legend-bar hidden flex items-center gap-2 overflow-x-auto py-1 px-1 bg-slate-950/70 border border-slate-800 rounded-xl text-[11px]"></div>
+
+        <div class="relative h-72 w-full">
+          <canvas id="canvas_${id}"></canvas>
+        </div>
+      `;
+
+      gridContainer.appendChild(card);
+
+      state.chartLocalConfigs[id] = {
+        kpi: kpi,
+        sites: ['ALL'],
+        cells: ['ALL']
+      };
+
+      initChartInstance(id);
+    }
+
+    function initChartInstance(id) {
+      const canvas = document.getElementById(`canvas_${id}`);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const cfg = state.chartLocalConfigs[id];
+      const kpiName = cfg.kpi;
+
+      const xCol = document.getElementById('xColumnSelect') ? document.getElementById('xColumnSelect').value : '';
+      const labels = Array.from(new Set(state.dataset.map(d => d[xCol]))).sort();
+
+      const globalType = document.getElementById('globalChartTypeSelect') ? document.getElementById('globalChartTypeSelect').value : 'line_smooth_nopoints';
+      let chartType = 'line';
+      let tension = 0.35;
+      let fill = false;
+      let borderWidth = 2.5;
+      let pointRadius = 2;
+
+      if (globalType === 'line_smooth') { chartType = 'line'; tension = 0.35; borderWidth = 2.5; pointRadius = 3; }
+      else if (globalType === 'line_smooth_nopoints') { chartType = 'line'; tension = 0.35; borderWidth = 2.5; pointRadius = 0; }
+      else if (globalType === 'line_straight') { chartType = 'line'; tension = 0; borderWidth = 2; pointRadius = 3; }
+      else if (globalType === 'line_straight_nopoints') { chartType = 'line'; tension = 0; borderWidth = 2; pointRadius = 0; }
+      else if (globalType === 'line_stepped') { chartType = 'line'; tension = 0; stepped = true; borderWidth = 2.5; pointRadius = 0; }
+      else if (globalType === 'bar') { chartType = 'bar'; borderWidth = 1; pointRadius = 0; }
+      else if (globalType === 'area') { chartType = 'line'; tension = 0.35; fill = true; borderWidth = 2; pointRadius = 0; }
+
+      const palette = ['#38bdf8', '#fb7185', '#34d399', '#c084fc', '#facc15', '#f43f5e', '#22d3ee', '#818cf8', '#fb923c'];
+
+      let datasets = [];
+      let activeSites = cfg.sites.includes('ALL') ? state.sites : cfg.sites;
+      let activeCells = state.cells;
+      if (!state.isSiteLevelOnly) {
+        activeCells = cfg.cells.includes('ALL') ? state.cells : cfg.cells;
+      }
+
+      let colorIdx = 0;
+
+      if (state.isSiteLevelOnly) {
+        activeSites.forEach(site => {
+          const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === String(site));
+          const dataPoints = labels.map(lbl => {
+            const row = siteRows.find(d => String(d[xCol]) === String(lbl));
+            return row ? parseMetricValue(row[kpiName], kpiName) : null;
+          });
+
+          const color = palette[colorIdx % palette.length];
+          colorIdx++;
+
+          datasets.push({
+            label: site,
+            data: dataPoints,
+            borderColor: color,
+            backgroundColor: fill ? color + '33' : color,
+            borderWidth: borderWidth,
+            tension: tension,
+            fill: fill,
+            pointRadius: pointRadius,
+            pointHoverRadius: 5
+          });
+        });
+      } else {
+        activeSites.forEach(site => {
+          activeCells.forEach(cell => {
+            const filtered = state.dataset.filter(d => String(d[state.siteKey]) === String(site) && String(d[state.cellKey]) === String(cell));
+            if (filtered.length === 0) return;
+
+            const dataPoints = labels.map(lbl => {
+              const row = filtered.find(d => String(d[xCol]) === String(lbl));
+              return row ? parseMetricValue(row[kpiName], kpiName) : null;
+            });
+
+            const color = palette[colorIdx % palette.length];
+            colorIdx++;
+
+            datasets.push({
+              label: `${site} • Cell ${cell}`,
+              data: dataPoints,
+              borderColor: color,
+              backgroundColor: fill ? color + '33' : color,
+              borderWidth: borderWidth,
+              tension: tension,
+              fill: fill,
+              pointRadius: pointRadius,
+              pointHoverRadius: 5
+            });
+          });
+        });
+      }
+
+      if (state.chartInstances[id]) {
+        state.chartInstances[id].destroy();
+      }
+
+      state.chartInstances[id] = new Chart(ctx, {
+        type: chartType,
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          customKpiName: kpiName,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          hover: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: true,
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              titleColor: '#38bdf8',
+              bodyColor: '#f1f5f9',
+              borderColor: 'rgba(244, 114, 182, 0.5)',
+              borderWidth: 1,
+              padding: 12,
+              boxPadding: 6,
+              usePointStyle: true,
+              callbacks: {
+                title: function(tooltipItems) {
+                  return '📅 Timestamp: ' + tooltipItems[0].label;
+                },
+                label: function(context) {
+                  let label = context.dataset.label || '';
+                  if (label) label += ': ';
+                  if (context.parsed.y !== null) label += context.parsed.y;
+                  return label;
+                },
+                afterLabel: function(context) {
+                  return '⚡ Counter: ' + kpiName;
+                }
+              }
+            }
+          },
+          onClick: (evt, activeElements) => {
+            if (activeElements.length > 0) {
+              const element = activeElements[0];
+              const datasetIndex = element.datasetIndex;
+              const dataIndex = element.index;
+              const dataset = state.chartInstances[id].data.datasets[datasetIndex];
+              const timestamp = labels[dataIndex];
+              const series = dataset.label;
+              const value = dataset.data[dataIndex];
+
+              showPointDetailsModal({ timestamp, series, kpi: kpiName, value });
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.04)' },
+              ticks: { color: '#94a3b8', font: { size: 10, family: 'monospace' }, maxTicksLimit: 8 }
+            },
+            y: {
+              grid: { color: 'rgba(255, 255, 255, 0.04)' },
+              ticks: { color: '#94a3b8', font: { size: 10, family: 'monospace' } }
+            }
+          }
+        },
+        plugins: [thresholdPlugin]
+      });
+
+      renderCustomHtmlLegend(id);
+    }
+
+    function updateChartInPlace(id) {
+      if (state.chartInstances[id]) {
+        state.chartInstances[id].destroy();
+        delete state.chartInstances[id];
+      }
+      initChartInstance(id);
+    }
+
+    function exportSingleChart(id) {
+      const chart = state.chartInstances[id];
+      if (!chart) return;
+      const cfg = state.chartLocalConfigs[id];
+      const filename = `PloochyNet_Chart_${cfg ? cfg.kpi.replace(/[^a-zA-Z0-9]/g, '_') : id}.png`;
+
+      // Draw onto a white-backed canvas so the export is usable in reports/Word/PPT
+      // (raw canvas export is transparent and looks broken on a white page)
+      const sourceCanvas = chart.canvas;
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = sourceCanvas.width;
+      exportCanvas.height = sourceCanvas.height;
+      const ctx = exportCanvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+      ctx.drawImage(sourceCanvas, 0, 0);
+
+      const url = exportCanvas.toDataURL('image/png', 1.0);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Build export rows (timestamp / series / KPI / value) for a single chart, reused by Excel & CSV export
+    function buildChartExportRows(id) {
+      const chart = state.chartInstances[id];
+      const cfg = state.chartLocalConfigs[id];
+      if (!chart || !cfg) return null;
+
+      const kpiName = cfg.kpi;
+      const labels = chart.data.labels || [];
+      const rows = [];
+      chart.data.datasets.forEach(dataset => {
+        dataset.data.forEach((val, dataIdx) => {
+          rows.push({
+            'Timestamp / X-Axis': labels[dataIdx] !== undefined ? labels[dataIdx] : '',
+            'Series / Object': dataset.label,
+            'KPI Metric': kpiName,
+            'Value': val !== null && val !== undefined ? val : ''
+          });
+        });
+      });
+      return { kpiName, rows };
+    }
+
+    function exportSingleChartExcel(id) {
+      const built = buildChartExportRows(id);
+      if (!built) return;
+      const ws = XLSX.utils.json_to_sheet(built.rows.length ? built.rows : [{ 'Timestamp / X-Axis': 'No Data' }]);
+      const wb = XLSX.utils.book_new();
+      let sheetName = built.kpiName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Chart');
+      XLSX.writeFile(wb, `PloochyNet_Chart_${built.kpiName.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`);
+    }
+
+    function exportSingleChartCSV(id) {
+      const built = buildChartExportRows(id);
+      if (!built || built.rows.length === 0) return alert('No data to export.');
+      const ws = XLSX.utils.json_to_sheet(built.rows);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `PloochyNet_Chart_${built.kpiName.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function renderMultiPlots() {
+      const grid = document.getElementById('chartsGrid');
+      if (!grid || state.dataset.length === 0) return;
+
+      const checkedKpis = Array.from(document.querySelectorAll('.kpi-checkbox:checked')).map(cb => cb.value);
+      if (checkedKpis.length === 0) {
+        grid.innerHTML = `<div class="col-span-2 glass-card p-12 text-center text-slate-500 font-mono italic">Please select at least one KPI counter above.</div>`;
+        return;
+      }
+
+      grid.innerHTML = '';
+      Object.keys(state.chartInstances).forEach(id => {
+        if (state.chartInstances[id]) state.chartInstances[id].destroy();
+      });
+      state.chartInstances = {};
+      state.chartLocalConfigs = {};
+
+      checkedKpis.forEach((kpi, idx) => {
+        const cardMeta = { id: `chart_${idx}_${Date.now()}`, kpi: kpi, titleTag: 'Unified Multi-Object View' };
+        appendChartCardToGrid(cardMeta, grid);
+      });
+    }
+
+    // KPI -> troubleshooting knowledge base. Matched by keyword against the KPI column name.
+    // Returns an object with a short diagnosis blurb and concrete next steps for a CRITICAL breach.
+    function getKpiRecommendation(kpiName, severity) {
+      const name = (kpiName || '').toLowerCase();
+      const level = severity === 'warning' ? 'Monitor closely' : 'Immediate action';
+
+      const rules = [
+        { match: n => n.includes('access') || n.includes('rrc'),
+          diagnosis: 'RRC/Access setup failures rising',
+          actions: ['Check RACH config & PRACH root sequence', 'Review RRC congestion / admission control counters', 'Verify no cell barring or license capacity cap'] },
+        { match: n => n.includes('retain') || n.includes('drop') || n.includes('call'),
+          diagnosis: 'Call/session drop rate elevated',
+          actions: ['Check handover failure causes (HO out/in)', 'Review radio link failure (RLF) counters', 'Inspect neighbor list & X2/S1 handover config'] },
+        { match: n => n.includes('avail') || n.includes('valid'),
+          diagnosis: 'Cell availability degraded',
+          actions: ['Check for unplanned outages / VSWR alarms', 'Review transmission link (backhaul) status', 'Confirm no ongoing maintenance not logged as cutover'] },
+        { match: n => n.includes('cqi'),
+          diagnosis: 'Channel quality (CQI) degraded',
+          actions: ['Check for interference or overshooting cells', 'Review RF tilt / azimuth vs coverage plan', 'Inspect UE distribution vs cell edge coverage'] },
+        { match: n => n.includes('prb') || n.includes('util'),
+          diagnosis: 'PRB utilization / congestion high',
+          actions: ['Evaluate capacity expansion (carrier aggregation, new carrier)', 'Check load balancing between sectors/layers', 'Review traffic steering thresholds'] },
+        { match: n => n.includes('lat') || n.includes('delay') || n.includes('rtt'),
+          diagnosis: 'Latency/RTT above acceptable range',
+          actions: ['Check backhaul congestion / QoS marking', 'Review core network routing & S1-U path', 'Inspect scheduler config for delay-sensitive bearers'] },
+        { match: n => n.includes('interfer') || n.includes('noise'),
+          diagnosis: 'Interference / noise floor rising',
+          actions: ['Run interference scan / spectrum analysis', 'Check for PIM sources or external interferers', 'Review uplink power control settings'] },
+        { match: n => n.includes('tp') || n.includes('throughput') || n.includes('speed') || n.includes('rate'),
+          diagnosis: 'Throughput below target',
+          actions: ['Check PRB utilization & CQI correlation', 'Verify MIMO rank / carrier aggregation status', 'Inspect backhaul capacity at the site'] },
+      ];
+
+      const hit = rules.find(r => r.match(name));
+      if (hit) {
+        return { level, diagnosis: hit.diagnosis, actions: hit.actions };
+      }
+      return { level, diagnosis: `${kpiName} outside configured threshold`, actions: ['Cross-check against correlated KPIs (traffic, availability, interference)', 'Review recent config changes or cutover events near breach time'] };
+    }
+
+    function generatePlottedChartsAuditReport() {
+      const container = document.getElementById('auditReportResultContainer');
+      if (!container) return;
+
+      const chartIds = Object.keys(state.chartInstances);
+      if (chartIds.length === 0) {
+        container.innerHTML = `<div class="glass-card p-10 text-center text-slate-500 font-mono italic">No active charts plotted in Step 2. Please generate charts first.</div>`;
+        return;
+      }
+
+      let html = `<div class="space-y-4">`;
+      state.lastAuditReport = []; // cached for export
+
+      chartIds.forEach((id, idx) => {
+        const cfg = state.chartLocalConfigs[id];
+        const chart = state.chartInstances[id];
+        if (!cfg || !chart) return;
+
+        const kpi = cfg.kpi;
+        const thresh = state.kpiThresholds[kpi] || { enable: false, target: 99, warning: 97, critical: 95, direction: 'lower_is_worse' };
+        const higherIsWorse = thresh.direction === 'higher_is_worse';
+
+        let totalPoints = 0;
+        let criticalCount = 0;
+        let warningCount = 0;
+        let sumVal = 0;
+
+        // Track breaches per-series (site/cell) to find the worst offender
+        const seriesBreachCounts = {};
+
+        chart.data.datasets.forEach(ds => {
+          let seriesCritical = 0;
+          ds.data.forEach(val => {
+            if (val !== null && val !== undefined && !isNaN(val)) {
+              totalPoints++;
+              sumVal += val;
+              if (thresh.enable) {
+                const isCritical = higherIsWorse ? val > thresh.critical : val < thresh.critical;
+                const isWarning = !isCritical && (higherIsWorse ? val > thresh.warning : val < thresh.warning);
+                if (isCritical) { criticalCount++; seriesCritical++; }
+                else if (isWarning) { warningCount++; }
+              }
+            }
+          });
+          if (seriesCritical > 0) seriesBreachCounts[ds.label] = seriesCritical;
+        });
+
+        const avgVal = totalPoints > 0 ? (sumVal / totalPoints).toFixed(2) : 'N/A';
+        let healthStatus = 'HEALTHY & STABLE';
+        let statusBadgeClass = 'bg-emerald-950 text-emerald-300 border-emerald-800';
+        if (criticalCount > 0) {
+          healthStatus = 'CRITICAL BREACHES DETECTED';
+          statusBadgeClass = 'bg-rose-950 text-rose-300 border-rose-800';
+        } else if (warningCount > 0) {
+          healthStatus = 'DEGRADED - WATCHLIST';
+          statusBadgeClass = 'bg-amber-950 text-amber-300 border-amber-800';
+        }
+
+        // Worst offender (site/cell series with most critical breaches)
+        let worstOffender = null, worstCount = 0;
+        Object.entries(seriesBreachCounts).forEach(([label, count]) => {
+          if (count > worstCount) { worstOffender = label; worstCount = count; }
+        });
+
+        const rec = getKpiRecommendation(kpi, criticalCount > 0 ? 'critical' : (warningCount > 0 ? 'warning' : 'ok'));
+        const showRec = criticalCount > 0 || warningCount > 0;
+
+        state.lastAuditReport.push({
+          kpi, healthStatus, avgVal, criticalCount, warningCount, totalPoints,
+          thresholdEnabled: thresh.enable, direction: thresh.direction, critical: thresh.critical, warning: thresh.warning,
+          worstOffender: worstOffender || 'N/A', worstOffenderBreaches: worstCount,
+          diagnosis: showRec ? rec.diagnosis : 'No breach detected', actions: showRec ? rec.actions.join(' | ') : ''
+        });
+
+        html += `
+          <div class="glass-card p-5 space-y-3 border border-pink-500/20">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-base">📊</span>
+                <div>
+                  <h4 class="font-black text-white text-xs font-mono">Chart #${idx + 1}: ${kpi}</h4>
+                  <span class="text-[10px] text-slate-400 font-mono">Series Count: ${chart.data.datasets.length} | Evaluated Points: ${totalPoints} | ${higherIsWorse ? '▲ Higher = Worse' : '▼ Lower = Worse'}</span>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold ${statusBadgeClass}">${healthStatus}</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">Average Value</span>
+                <span class="font-bold text-cyan-300 font-mono text-sm">${avgVal}</span>
+              </div>
+              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">Threshold Status</span>
+                <span class="font-bold font-mono text-sm ${thresh.enable ? 'text-amber-300' : 'text-slate-500'}">${thresh.enable ? `Warn ${higherIsWorse ? '>' : '<'} ${thresh.warning} / Crit ${higherIsWorse ? '>' : '<'} ${thresh.critical}` : 'Disabled'}</span>
+              </div>
+              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">Critical / Warning Points</span>
+                <span class="font-bold font-mono text-sm ${criticalCount > 0 ? 'text-rose-400' : (warningCount > 0 ? 'text-amber-400' : 'text-emerald-400')}">${criticalCount} / ${warningCount}</span>
+              </div>
+              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">Worst Offender</span>
+                <span class="font-bold font-mono text-xs text-pink-300">${worstOffender ? `${worstOffender} (${worstCount} pts)` : 'None'}</span>
+              </div>
+            </div>
+
+            ${showRec ? `
+            <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 space-y-1.5">
+              <span class="text-[10px] text-amber-300 font-bold font-mono">⚠ ${rec.level}: ${rec.diagnosis}</span>
+              <ul class="text-[11px] text-slate-300 font-mono list-disc list-inside space-y-0.5">
+                ${rec.actions.map(a => `<li>${a}</li>`).join('')}
+              </ul>
+            </div>` : ''}
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    // Export the audit report (all KPI diagnostics) as an Excel workbook
+    function exportAuditReportExcel() {
+      if (!state.lastAuditReport || state.lastAuditReport.length === 0) {
+        return alert('No audit report generated yet. Open the Actions tab first.');
+      }
+      const rows = state.lastAuditReport.map(r => ({
+        'KPI': r.kpi,
+        'Status': r.healthStatus,
+        'Average Value': r.avgVal,
+        'Direction': r.direction === 'higher_is_worse' ? 'Higher = Worse' : 'Lower = Worse',
+        'Warning Threshold': r.warning,
+        'Critical Threshold': r.critical,
+        'Critical Points': r.criticalCount,
+        'Warning Points': r.warningCount,
+        'Total Points Evaluated': r.totalPoints,
+        'Worst Offender': r.worstOffender,
+        'Worst Offender Breaches': r.worstOffenderBreaches,
+        'Diagnosis': r.diagnosis,
+        'Recommended Actions': r.actions
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Audit Report');
+      XLSX.writeFile(wb, 'PloochyNet_Audit_Report.xlsx');
+    }
+  </script>
+</body>
+</html>
