@@ -439,16 +439,6 @@
             <span class="text-base font-black">+</span> New Charts
           </button>
 
-          <!-- BATCH EXPORT ALL CHARTS TO ONE EXCEL FILE -->
-          <button onclick="exportAllChartsBatch()" class="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black rounded-xl transition-all flex items-center gap-1.5 text-xs shadow-md shadow-cyan-600/30" title="Export all plotted charts into one single Excel workbook">
-            <span>📥</span> Export All Charts (Excel)
-          </button>
-
-          <!-- BATCH EXPORT ALL CHARTS AS PNG IMAGES -->
-          <button onclick="exportAllChartsAsImages()" class="px-3.5 py-2 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black rounded-xl transition-all flex items-center gap-1.5 text-xs shadow-md shadow-fuchsia-600/30" title="Download every plotted chart as a separate PNG image">
-            <span>🖼️</span> Export All Charts (Images)
-          </button>
-
           <div class="custom-dropdown-container">
             <button onclick="toggleDropdown('batchOpMenu', event)" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold rounded-xl transition-all flex items-center gap-1.5 text-xs">
               <span>Batch Operation</span>
@@ -593,6 +583,19 @@
             </button>
           </div>
         </div>
+        <div id="auditFilterBar" class="hidden flex flex-wrap items-center gap-2 pt-1">
+          <span class="text-[11px] text-slate-400 font-bold">🔎 Filter by Site:</span>
+          <div class="custom-dropdown-container" id="auditSiteFilterContainer">
+            <button onclick="toggleDropdown('auditSiteFilterMenu', event)" id="auditSiteFilterBtn" class="px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-pink-500 text-slate-200 rounded-lg text-[11px] font-mono flex items-center gap-2">
+              <span id="auditSiteFilterLabel">All Sites</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div id="auditSiteFilterMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-64 bg-slate-950 border border-pink-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+              <input type="text" id="auditSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterAuditSiteDropdownList()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-pink-500 focus:outline-none font-mono mb-2">
+              <div id="auditSiteFilterList" class="space-y-0.5 text-[11px]"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- AUDIT REPORT RESULT CONTAINER -->
@@ -667,7 +670,19 @@
         }
       });
 
-      if (zoneId === 'plot') setTimeout(renderMultiPlots, 50);
+      if (zoneId === 'plot') {
+        const hasCharts = Object.keys(state.chartInstances).length > 0;
+        if (!hasCharts) {
+          // First time building charts — nothing to preserve yet.
+          setTimeout(renderMultiPlots, 50);
+        } else {
+          // Charts already exist (e.g. returning from Step 3) — just resize them back into
+          // view instead of rebuilding, so per-chart object selections & settings survive.
+          setTimeout(() => {
+            Object.values(state.chartInstances).forEach(chart => { if (chart) chart.resize(); });
+          }, 50);
+        }
+      }
       if (zoneId === 'actions') generatePlottedChartsAuditReport();
     }
 
@@ -1106,67 +1121,6 @@
       }
     }
 
-    // BATCH EXPORT ALL PLOTTED CHARTS INTO ONE EXCEL FILE (IN ONE TAKE)
-    function exportAllChartsBatch() {
-      const chartIds = Object.keys(state.chartInstances);
-      if (chartIds.length === 0) return alert('No active charts available to export.');
-
-      const wb = XLSX.utils.book_new();
-
-      chartIds.forEach((id, idx) => {
-        const chart = state.chartInstances[id];
-        const cfg = state.chartLocalConfigs[id];
-        if (!chart || !cfg) return;
-
-        const kpiName = cfg.kpi;
-        const labels = chart.data.labels || [];
-        const rows = [];
-
-        chart.data.datasets.forEach(dataset => {
-          dataset.data.forEach((val, dataIdx) => {
-            rows.push({
-              'Timestamp / X-Axis': labels[dataIdx] !== undefined ? labels[dataIdx] : '',
-              'Series / Object': dataset.label,
-              'KPI Metric': kpiName,
-              'Value': val !== null && val !== undefined ? val : ''
-            });
-          });
-        });
-
-        if (rows.length === 0) {
-          rows.push({ 'Timestamp / X-Axis': 'No Data', 'Series / Object': 'N/A', 'KPI Metric': kpiName, 'Value': '' });
-        }
-
-        const ws = XLSX.utils.json_to_sheet(rows);
-        
-        let sheetName = `Chart_${idx + 1}_${kpiName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        if (sheetName.length > 31) {
-          sheetName = sheetName.substring(0, 31);
-        }
-        
-        let uniqueName = sheetName;
-        let counter = 1;
-        while (wb.SheetNames.includes(uniqueName)) {
-          const suffix = `_${counter}`;
-          uniqueName = sheetName.substring(0, 31 - suffix.length) + suffix;
-          counter++;
-        }
-
-        XLSX.utils.book_append_sheet(wb, ws, uniqueName);
-      });
-
-      XLSX.writeFile(wb, 'PloochyNet_Plotted_Charts_Export.xlsx');
-    }
-
-    // Download every plotted chart as a separate PNG (staggered so the browser doesn't block multiple downloads)
-    function exportAllChartsAsImages() {
-      const chartIds = Object.keys(state.chartInstances);
-      if (chartIds.length === 0) return alert('No active charts available to export.');
-      chartIds.forEach((id, idx) => {
-        setTimeout(() => exportSingleChart(id), idx * 350);
-      });
-    }
-
     function closeModal() {
       document.getElementById('appModal').classList.add('hidden');
     }
@@ -1567,6 +1521,26 @@
       });
     }
 
+    // Computes y-axis suggestedMin/Max so enabled threshold lines are always inside the visible range,
+    // instead of relying purely on the data's own min/max (which can clip threshold lines out of view).
+    function computeThresholdYBounds(kpiName, datasets) {
+      const cfg = state.kpiThresholds[kpiName];
+      let allVals = [];
+      (datasets || []).forEach(ds => {
+        (ds.data || []).forEach(v => { if (v !== null && v !== undefined && !isNaN(v)) allVals.push(v); });
+      });
+      if (cfg && cfg.enable) {
+        if (cfg.showTarget && !isNaN(cfg.target)) allVals.push(parseFloat(cfg.target));
+        if (cfg.showWarning && !isNaN(cfg.warning)) allVals.push(parseFloat(cfg.warning));
+        if (cfg.showCritical && !isNaN(cfg.critical)) allVals.push(parseFloat(cfg.critical));
+      }
+      if (allVals.length === 0) return { suggestedMin: undefined, suggestedMax: undefined };
+      const min = Math.min(...allVals);
+      const max = Math.max(...allVals);
+      const pad = (max - min) * 0.08 || Math.abs(max) * 0.05 || 1;
+      return { suggestedMin: min - pad, suggestedMax: max + pad };
+    }
+
     function updateKpiThreshold(kpi, field, val) {
       if (!state.kpiThresholds[kpi]) return;
       if (['enable', 'showTarget', 'showWarning', 'showCritical'].includes(field)) {
@@ -1578,7 +1552,15 @@
       }
 
       Object.keys(state.chartInstances).forEach(id => {
-        if (state.chartInstances[id]) state.chartInstances[id].update();
+        const chart = state.chartInstances[id];
+        const localCfg = state.chartLocalConfigs[id];
+        if (!chart) return;
+        if (localCfg && localCfg.kpi === kpi) {
+          const yBounds = computeThresholdYBounds(kpi, chart.data.datasets);
+          chart.options.scales.y.suggestedMin = yBounds.suggestedMin;
+          chart.options.scales.y.suggestedMax = yBounds.suggestedMax;
+        }
+        chart.update();
       });
     }
 
@@ -1946,7 +1928,9 @@
             tension: tension,
             fill: fill,
             pointRadius: pointRadius,
-            pointHoverRadius: 5
+            pointHoverRadius: 5,
+            siteName: site,
+            cellName: null
           });
         });
       } else {
@@ -1972,7 +1956,9 @@
               tension: tension,
               fill: fill,
               pointRadius: pointRadius,
-              pointHoverRadius: 5
+              pointHoverRadius: 5,
+              siteName: site,
+              cellName: cell
             });
           });
         });
@@ -1981,6 +1967,8 @@
       if (state.chartInstances[id]) {
         state.chartInstances[id].destroy();
       }
+
+      const yBounds = computeThresholdYBounds(kpiName, datasets);
 
       state.chartInstances[id] = new Chart(ctx, {
         type: chartType,
@@ -2018,9 +2006,6 @@
                   if (label) label += ': ';
                   if (context.parsed.y !== null) label += context.parsed.y;
                   return label;
-                },
-                afterLabel: function(context) {
-                  return '⚡ Counter: ' + kpiName;
                 }
               }
             }
@@ -2040,12 +2025,14 @@
           },
           scales: {
             x: {
-              grid: { color: 'rgba(255, 255, 255, 0.04)' },
+              grid: { color: 'rgba(255, 255, 255, 0.1)', lineWidth: 1.5 },
               ticks: { color: '#94a3b8', font: { size: 10, family: 'monospace' }, maxTicksLimit: 8 }
             },
             y: {
-              grid: { color: 'rgba(255, 255, 255, 0.04)' },
-              ticks: { color: '#94a3b8', font: { size: 10, family: 'monospace' } }
+              grid: { color: 'rgba(255, 255, 255, 0.1)', lineWidth: 1.5 },
+              ticks: { color: '#94a3b8', font: { size: 10, family: 'monospace' } },
+              suggestedMin: yBounds.suggestedMin,
+              suggestedMax: yBounds.suggestedMax
             }
           }
         },
@@ -2164,7 +2151,7 @@
     // Returns an object with a short diagnosis blurb and concrete next steps for a CRITICAL breach.
     function getKpiRecommendation(kpiName, severity) {
       const name = (kpiName || '').toLowerCase();
-      const level = severity === 'warning' ? 'Monitor closely' : 'Immediate action';
+      const level = severity === 'critical' ? 'Immediate action' : 'Monitor closely';
 
       const rules = [
         { match: n => n.includes('access') || n.includes('rrc'),
@@ -2200,20 +2187,54 @@
       return { level, diagnosis: `${kpiName} outside configured threshold`, actions: ['Cross-check against correlated KPIs (traffic, availability, interference)', 'Review recent config changes or cutover events near breach time'] };
     }
 
+    // Evaluates the last 3 data points of a single site/cell series against its KPI threshold.
+    // Only bounds the user has actively turned on (showTarget/showWarning/showCritical) are checked —
+    // previously this always checked warning/critical regardless of their toggle state, and ignored Target entirely.
+    // Returns 'OK' or 'Under Threshold' plus the worst severity seen ('critical' | 'warning' | 'target' | null).
+    function evaluateLast3Days(ds, thresh, higherIsWorse) {
+      const pts = (ds.data || []).filter(v => v !== null && v !== undefined && !isNaN(v));
+      const last3 = pts.slice(-3);
+      if (!thresh.enable || last3.length === 0) {
+        return { status: !thresh.enable ? 'No Threshold Set' : 'No Data', severity: null };
+      }
+
+      const hasCritical = !!thresh.showCritical && !isNaN(parseFloat(thresh.critical));
+      const hasWarning = !!thresh.showWarning && !isNaN(parseFloat(thresh.warning));
+      const hasTarget = !!thresh.showTarget && !isNaN(parseFloat(thresh.target));
+
+      if (!hasCritical && !hasWarning && !hasTarget) {
+        return { status: 'No Threshold Set', severity: null };
+      }
+
+      let worst = null;
+      const rank = { critical: 3, warning: 2, target: 1 };
+      last3.forEach(val => {
+        let hit = null;
+        if (hasCritical && (higherIsWorse ? val > thresh.critical : val < thresh.critical)) hit = 'critical';
+        else if (hasWarning && (higherIsWorse ? val > thresh.warning : val < thresh.warning)) hit = 'warning';
+        else if (hasTarget && (higherIsWorse ? val > thresh.target : val < thresh.target)) hit = 'target';
+
+        if (hit && (!worst || rank[hit] > rank[worst])) worst = hit;
+      });
+      return { status: worst ? 'Under Threshold' : 'OK', severity: worst };
+    }
+
     function generatePlottedChartsAuditReport() {
       const container = document.getElementById('auditReportResultContainer');
+      const filterBar = document.getElementById('auditFilterBar');
       if (!container) return;
 
       const chartIds = Object.keys(state.chartInstances);
       if (chartIds.length === 0) {
         container.innerHTML = `<div class="glass-card p-10 text-center text-slate-500 font-mono italic">No active charts plotted in Step 2. Please generate charts first.</div>`;
+        if (filterBar) filterBar.classList.add('hidden');
         return;
       }
 
-      let html = `<div class="space-y-4">`;
-      state.lastAuditReport = []; // cached for export
+      const rows = []; // one row per site/cell object per KPI
+      const sitesInReport = new Set();
 
-      chartIds.forEach((id, idx) => {
+      chartIds.forEach(id => {
         const cfg = state.chartLocalConfigs[id];
         const chart = state.chartInstances[id];
         if (!cfg || !chart) return;
@@ -2222,124 +2243,149 @@
         const thresh = state.kpiThresholds[kpi] || { enable: false, target: 99, warning: 97, critical: 95, direction: 'lower_is_worse' };
         const higherIsWorse = thresh.direction === 'higher_is_worse';
 
-        let totalPoints = 0;
-        let criticalCount = 0;
-        let warningCount = 0;
-        let sumVal = 0;
-
-        // Track breaches per-series (site/cell) to find the worst offender
-        const seriesBreachCounts = {};
-
         chart.data.datasets.forEach(ds => {
-          let seriesCritical = 0;
-          ds.data.forEach(val => {
-            if (val !== null && val !== undefined && !isNaN(val)) {
-              totalPoints++;
-              sumVal += val;
-              if (thresh.enable) {
-                const isCritical = higherIsWorse ? val > thresh.critical : val < thresh.critical;
-                const isWarning = !isCritical && (higherIsWorse ? val > thresh.warning : val < thresh.warning);
-                if (isCritical) { criticalCount++; seriesCritical++; }
-                else if (isWarning) { warningCount++; }
-              }
-            }
+          const { status, severity } = evaluateLast3Days(ds, thresh, higherIsWorse);
+          const siteName = ds.siteName || ds.label;
+          sitesInReport.add(siteName);
+
+          let suggestion = 'KPI performing within nominal thresholds. No immediate action required.';
+          if (status === 'No Threshold Set') suggestion = 'No threshold configured for this KPI — set one in Step 2 to enable monitoring.';
+          else if (status === 'No Data') suggestion = 'No data points available in the last 3 days for this object.';
+          else if (status === 'Under Threshold') {
+            const rec = getKpiRecommendation(kpi, severity);
+            suggestion = `${rec.diagnosis}. ${rec.actions.join('. ')}.`;
+          }
+
+          rows.push({
+            objectLabel: ds.label, siteName, cellName: ds.cellName || null,
+            kpi, status, severity, suggestion
           });
-          if (seriesCritical > 0) seriesBreachCounts[ds.label] = seriesCritical;
         });
-
-        const avgVal = totalPoints > 0 ? (sumVal / totalPoints).toFixed(2) : 'N/A';
-        let healthStatus = 'HEALTHY & STABLE';
-        let statusBadgeClass = 'bg-emerald-950 text-emerald-300 border-emerald-800';
-        if (criticalCount > 0) {
-          healthStatus = 'CRITICAL BREACHES DETECTED';
-          statusBadgeClass = 'bg-rose-950 text-rose-300 border-rose-800';
-        } else if (warningCount > 0) {
-          healthStatus = 'DEGRADED - WATCHLIST';
-          statusBadgeClass = 'bg-amber-950 text-amber-300 border-amber-800';
-        }
-
-        // Worst offender (site/cell series with most critical breaches)
-        let worstOffender = null, worstCount = 0;
-        Object.entries(seriesBreachCounts).forEach(([label, count]) => {
-          if (count > worstCount) { worstOffender = label; worstCount = count; }
-        });
-
-        const rec = getKpiRecommendation(kpi, criticalCount > 0 ? 'critical' : (warningCount > 0 ? 'warning' : 'ok'));
-        const showRec = criticalCount > 0 || warningCount > 0;
-
-        state.lastAuditReport.push({
-          kpi, healthStatus, avgVal, criticalCount, warningCount, totalPoints,
-          thresholdEnabled: thresh.enable, direction: thresh.direction, critical: thresh.critical, warning: thresh.warning,
-          worstOffender: worstOffender || 'N/A', worstOffenderBreaches: worstCount,
-          diagnosis: showRec ? rec.diagnosis : 'No breach detected', actions: showRec ? rec.actions.join(' | ') : ''
-        });
-
-        html += `
-          <div class="glass-card p-5 space-y-3 border border-pink-500/20">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-2">
-              <div class="flex items-center gap-2">
-                <span class="text-base">📊</span>
-                <div>
-                  <h4 class="font-black text-white text-xs font-mono">Chart #${idx + 1}: ${kpi}</h4>
-                  <span class="text-[10px] text-slate-400 font-mono">Series Count: ${chart.data.datasets.length} | Evaluated Points: ${totalPoints} | ${higherIsWorse ? '▲ Higher = Worse' : '▼ Lower = Worse'}</span>
-                </div>
-              </div>
-              <span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold ${statusBadgeClass}">${healthStatus}</span>
-            </div>
-
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-                <span class="text-slate-400 block text-[10px]">Average Value</span>
-                <span class="font-bold text-cyan-300 font-mono text-sm">${avgVal}</span>
-              </div>
-              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-                <span class="text-slate-400 block text-[10px]">Threshold Status</span>
-                <span class="font-bold font-mono text-sm ${thresh.enable ? 'text-amber-300' : 'text-slate-500'}">${thresh.enable ? `Warn ${higherIsWorse ? '>' : '<'} ${thresh.warning} / Crit ${higherIsWorse ? '>' : '<'} ${thresh.critical}` : 'Disabled'}</span>
-              </div>
-              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-                <span class="text-slate-400 block text-[10px]">Critical / Warning Points</span>
-                <span class="font-bold font-mono text-sm ${criticalCount > 0 ? 'text-rose-400' : (warningCount > 0 ? 'text-amber-400' : 'text-emerald-400')}">${criticalCount} / ${warningCount}</span>
-              </div>
-              <div class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-                <span class="text-slate-400 block text-[10px]">Worst Offender</span>
-                <span class="font-bold font-mono text-xs text-pink-300">${worstOffender ? `${worstOffender} (${worstCount} pts)` : 'None'}</span>
-              </div>
-            </div>
-
-            ${showRec ? `
-            <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 space-y-1.5">
-              <span class="text-[10px] text-amber-300 font-bold font-mono">⚠ ${rec.level}: ${rec.diagnosis}</span>
-              <ul class="text-[11px] text-slate-300 font-mono list-disc list-inside space-y-0.5">
-                ${rec.actions.map(a => `<li>${a}</li>`).join('')}
-              </ul>
-            </div>` : ''}
-          </div>
-        `;
       });
 
-      html += `</div>`;
-      container.innerHTML = html;
+      // cache for export and for the site filter dropdown
+      state.lastAuditReport = rows;
+      state.auditReportSites = Array.from(sitesInReport).sort();
+      state.auditActiveSiteFilter = 'ALL';
+
+      renderAuditSiteFilterList();
+      updateAuditSiteFilterLabel();
+      if (filterBar) filterBar.classList.remove('hidden');
+
+      renderAuditReportTable(rows);
     }
 
-    // Export the audit report (all KPI diagnostics) as an Excel workbook
+    // Builds the selectable site list inside the audit "Filter by Site" dropdown
+    function renderAuditSiteFilterList() {
+      const list = document.getElementById('auditSiteFilterList');
+      if (!list) return;
+      const sites = state.auditReportSites || [];
+      list.innerHTML = `
+        <button onclick="selectAuditSiteFilter('ALL')" class="audit-site-filter-item w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-200 font-bold" data-site-search="all sites">
+          All Sites
+        </button>
+        ${sites.map(s => `
+          <button onclick="selectAuditSiteFilter('${s}')" class="audit-site-filter-item w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 font-mono" data-site-search="${s.toLowerCase()}">
+            ${s}
+          </button>
+        `).join('')}
+      `;
+    }
+
+    // Live search inside the site filter dropdown (does not change the active filter, just narrows the list)
+    function filterAuditSiteDropdownList() {
+      const term = (document.getElementById('auditSiteFilterSearch').value || '').toLowerCase();
+      document.querySelectorAll('.audit-site-filter-item').forEach(btn => {
+        const match = btn.getAttribute('data-site-search').includes(term);
+        btn.classList.toggle('hidden', !match);
+      });
+    }
+
+    function updateAuditSiteFilterLabel() {
+      const label = document.getElementById('auditSiteFilterLabel');
+      if (label) label.innerText = state.auditActiveSiteFilter === 'ALL' ? 'All Sites' : state.auditActiveSiteFilter;
+    }
+
+    // Called when a site is picked from the dropdown — filters the already-generated table client-side
+    function selectAuditSiteFilter(site) {
+      state.auditActiveSiteFilter = site;
+      updateAuditSiteFilterLabel();
+      toggleDropdown('auditSiteFilterMenu');
+
+      const searchInput = document.getElementById('auditSiteFilterSearch');
+      if (searchInput) searchInput.value = '';
+      filterAuditSiteDropdownList();
+
+      if (!state.lastAuditReport) return;
+      const filteredRows = site === 'ALL'
+        ? state.lastAuditReport
+        : state.lastAuditReport.filter(r => r.siteName === site);
+      renderAuditReportTable(filteredRows);
+    }
+
+    function renderAuditReportTable(rows) {
+      const container = document.getElementById('auditReportResultContainer');
+      if (!container) return;
+
+      const statusBadge = (status) => {
+        if (status === 'OK') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border-emerald-800">OK</span>`;
+        if (status === 'Under Threshold') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-rose-950 text-rose-300 border-rose-800">Under Threshold</span>`;
+        if (status === 'No Threshold Set') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border-slate-700">No Threshold Set</span>`;
+        return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border-slate-700">No Data</span>`;
+      };
+
+      const bodyRows = rows.map(r => `
+        <tr class="audit-report-row border-b border-slate-800/60 hover:bg-slate-900/40" data-site="${r.siteName}">
+          <td class="py-2.5 px-3 font-mono font-bold text-pink-300 text-xs whitespace-nowrap">${r.objectLabel}</td>
+          <td class="py-2.5 px-3 font-mono text-amber-300 text-xs whitespace-nowrap">${r.kpi}</td>
+          <td class="py-2.5 px-3">${statusBadge(r.status)}</td>
+          <td class="py-2.5 px-3 text-slate-300 text-[11px] leading-snug">${r.suggestion}</td>
+        </tr>
+      `).join('');
+
+      container.innerHTML = `
+        <div class="glass-card p-5 space-y-1 border border-pink-500/20">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🎯</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Plotted Site / Cell Health Audit Table</h3>
+              <p class="text-[11px] text-slate-400">Evaluates threshold compliance over the past 3 days for active charts and provides corrective optimization actions.</p>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card p-5 space-y-3 border border-pink-500/20">
+          <h4 class="font-black text-white text-xs flex items-center gap-1.5">📋 Plotted Objects Health & Action Plan Table (<span id="auditRowCount">${rows.length}</span> Items Evaluated)</h4>
+          <div class="overflow-x-auto custom-scrollbar">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-700 text-[10px] text-slate-400 uppercase font-mono">
+                  <th class="py-2 px-3">Site / Cell Object</th>
+                  <th class="py-2 px-3">KPI Metric</th>
+                  <th class="py-2 px-3">Status (Past 3 Days)</th>
+                  <th class="py-2 px-3">Optimization Suggestion / Action Plan</th>
+                </tr>
+              </thead>
+              <tbody id="auditReportTableBody">
+                ${bodyRows || `<tr><td colspan="4" class="py-6 text-center text-slate-500 font-mono italic">No objects to evaluate.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    // Export the audit report (all site/cell rows) as an Excel workbook
     function exportAuditReportExcel() {
       if (!state.lastAuditReport || state.lastAuditReport.length === 0) {
-        return alert('No audit report generated yet. Open the Actions tab first.');
+        return alert('No audit report generated yet. Click "Audit Plotted Charts Now" first.');
       }
       const rows = state.lastAuditReport.map(r => ({
-        'KPI': r.kpi,
-        'Status': r.healthStatus,
-        'Average Value': r.avgVal,
-        'Direction': r.direction === 'higher_is_worse' ? 'Higher = Worse' : 'Lower = Worse',
-        'Warning Threshold': r.warning,
-        'Critical Threshold': r.critical,
-        'Critical Points': r.criticalCount,
-        'Warning Points': r.warningCount,
-        'Total Points Evaluated': r.totalPoints,
-        'Worst Offender': r.worstOffender,
-        'Worst Offender Breaches': r.worstOffenderBreaches,
-        'Diagnosis': r.diagnosis,
-        'Recommended Actions': r.actions
+        'Site / Cell Object': r.objectLabel,
+        'Site': r.siteName,
+        'Cell': r.cellName || '',
+        'KPI Metric': r.kpi,
+        'Status (Past 3 Days)': r.status,
+        'Optimization Suggestion / Action Plan': r.suggestion
       }));
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
