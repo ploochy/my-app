@@ -12,6 +12,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- SheetJS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- jsPDF + AutoTable CDN (used for PDF export of the audit report) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
 
   <style>
     body {
@@ -215,6 +218,9 @@
         <button onclick="switchZone('actions')" id="tab-actions" class="nav-btn">
           <span>📈</span> 3. Plotted Health & Alerting Report
         </button>
+        <button onclick="switchZone('insights')" id="tab-insights" class="nav-btn">
+          <span>🧠</span> 4. Insights & Reports
+        </button>
       </nav>
     </div>
   </header>
@@ -403,14 +409,20 @@
 
         <div id="thresholdBarContainerWrapper" class="hidden transition-all duration-300 overflow-hidden space-y-4 pt-1">
           <div class="flex items-center justify-between text-xs">
-            <span class="text-slate-400 text-[11px]">Configure target/warning/critical lines, choose line styles (Solid, Dashed, Dotted), and manage X-axis time cutovers (Unselected by default):</span>
-            <button onclick="saveThresholdConfiguration()" class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-[11px] transition-all">
-              💾 Save Thresholds & Cutovers
-            </button>
+            <span class="text-slate-400 text-[11px]">Configure target/warning/critical lines, choose line styles (Solid, Dashed, Dotted), and manage X-axis time cutovers (Unselected by default). <span class="text-emerald-400">🔒 Auto-saved in this browser</span> — edits are remembered even after a reload.</span>
+            <div class="flex items-center gap-2">
+              <button onclick="smartAutoFillThresholds()" title="Auto-suggests Target/Warning/Critical values for any KPI you haven't already configured — never overwrites values you've set" class="px-3 py-1 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 border border-fuchsia-500/40 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5">
+                🪄 Smart Auto-Fill
+              </button>
+              <button onclick="saveThresholdConfiguration()" class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-[11px] transition-all">
+                💾 Save Thresholds & Cutovers
+              </button>
+            </div>
           </div>
           <div id="thresholdSaveNotification" class="hidden text-xs text-emerald-400 font-mono font-bold bg-emerald-950/60 p-2 rounded-lg border border-emerald-800">
             ✓ Threshold and Cutover configurations saved successfully!
           </div>
+          <div id="thresholdImportNotification" class="hidden text-xs font-mono font-bold p-2 rounded-lg border"></div>
 
           <!-- CUTOVER EVENTS MANAGEMENT SUB-SECTION -->
           <div class="p-3 bg-slate-900/90 border border-cyan-500/30 rounded-xl space-y-2.5">
@@ -606,6 +618,124 @@
       </div>
     </section>
 
+    <!-- STEP 4: INSIGHTS & REPORTS -->
+    <section id="zone-insights" class="space-y-6 hidden">
+
+      <!-- EXECUTIVE SUMMARY -->
+      <div class="glass-card p-5 space-y-3 border border-fuchsia-500/20">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🧠</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Executive Summary</h3>
+              <p class="text-[11px] text-slate-400">Auto-generated overview of the current audit results — run Step 3's audit first.</p>
+            </div>
+          </div>
+          <button onclick="exportAuditReportPDF()" title="Export the audit table as a PDF report" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5 whitespace-nowrap">
+            📄 Export PDF Report
+          </button>
+        </div>
+        <div id="executiveSummaryContainer" class="text-sm text-slate-200 leading-relaxed font-mono bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+          Run the audit in Step 3 first, then come back here.
+        </div>
+      </div>
+
+      <!-- KPI CORRELATION ANALYSIS -->
+      <div class="glass-card p-5 space-y-3 border border-cyan-500/20">
+        <div class="flex items-center gap-2">
+          <span class="text-base">🔗</span>
+          <div>
+            <h3 class="font-black text-white text-sm">KPI Correlation Analysis</h3>
+            <p class="text-[11px] text-slate-400">Finds KPI pairs among your currently plotted charts that move together (positively or negatively).</p>
+          </div>
+        </div>
+        <div id="correlationContainer" class="text-xs text-slate-500 font-mono italic">Plot at least 2 KPIs in Step 2 to compute correlations.</div>
+      </div>
+
+      <!-- BEFORE / AFTER CUTOVER COMPARISON -->
+      <div class="glass-card p-5 space-y-3 border border-sky-500/20">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🔀</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Before / After Cutover Comparison</h3>
+              <p class="text-[11px] text-slate-400">Compares average KPI values before vs after a cutover event you've defined in Step 2.</p>
+            </div>
+          </div>
+          <div class="custom-dropdown-container" id="cutoverCompareContainer">
+            <button onclick="toggleDropdown('cutoverCompareMenu', event)" id="cutoverCompareBtn" class="px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-sky-500 text-slate-200 rounded-lg text-[11px] font-mono flex items-center gap-2">
+              <span id="cutoverCompareLabel">Select a Cutover Event</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div id="cutoverCompareMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-64 bg-slate-950 border border-sky-500/50 rounded-xl p-2 max-h-60 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()"></div>
+          </div>
+        </div>
+        <div id="cutoverCompareResult" class="text-xs text-slate-500 font-mono italic">Define a cutover event in Step 2, then pick it above.</div>
+      </div>
+
+      <!-- SITE / CELL HEALTH HEATMAP -->
+      <div class="glass-card p-5 space-y-3 border border-amber-500/20">
+        <div class="flex items-center gap-2">
+          <span class="text-base">🗺️</span>
+          <div>
+            <h3 class="font-black text-white text-sm">Site / Cell Health Heatmap</h3>
+            <p class="text-[11px] text-slate-400">Visual grid of every plotted object × KPI, colored by Step 3's audit status — spot clusters of degraded cells at a glance.</p>
+          </div>
+        </div>
+        <div id="heatmapContainer" class="overflow-x-auto custom-scrollbar text-xs text-slate-500 font-mono italic">Run the audit in Step 3 first.</div>
+      </div>
+
+      <!-- MULTI-KPI OVERLAY CHART -->
+      <div class="glass-card p-5 space-y-3 border border-violet-500/20">
+        <div class="flex items-center gap-2">
+          <span class="text-base">🎛️</span>
+          <div>
+            <h3 class="font-black text-white text-sm">Multi-KPI Overlay Chart</h3>
+            <p class="text-[11px] text-slate-400">Overlay two KPIs for one site on a single chart (dual Y-axis) to eyeball correlation visually.</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <select id="overlaySiteSelect" class="px-2.5 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-violet-500">
+            <option value="">Select Site...</option>
+          </select>
+          <select id="overlayKpiASelect" class="px-2.5 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-violet-500">
+            <option value="">Select KPI A...</option>
+          </select>
+          <select id="overlayKpiBSelect" class="px-2.5 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-violet-500">
+            <option value="">Select KPI B...</option>
+          </select>
+        </div>
+        <button onclick="renderOverlayChart()" class="px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-black rounded-xl transition-all text-xs">
+          ⚡ Overlay Chart
+        </button>
+        <div id="overlayChartWrapper" class="hidden bg-slate-950/60 border border-slate-800 rounded-xl p-3" style="height: 320px;">
+          <canvas id="overlayChartCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- MULTI-PERIOD COMPARISON -->
+      <div class="glass-card p-5 space-y-3 border border-emerald-500/20">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-base">📆</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Multi-Period Comparison</h3>
+              <p class="text-[11px] text-slate-400">Load a second file (e.g. last month) to diff site/KPI health against what's currently loaded.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="document.getElementById('comparisonFileInput').click()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 rounded-lg font-bold text-[11px] transition-all">
+              📁 Load Comparison File
+            </button>
+            <input type="file" id="comparisonFileInput" accept=".xlsx,.xls,.csv,.json" class="hidden" onchange="handleComparisonFileUpload(event)">
+          </div>
+        </div>
+        <div id="comparisonFileStatus" class="text-[11px] text-slate-500 font-mono"></div>
+        <div id="comparisonResultContainer" class="text-xs text-slate-500 font-mono italic">No comparison file loaded yet.</div>
+      </div>
+
+    </section>
+
   </main>
 
   <!-- REUSABLE MODAL DIALOG CONTAINER -->
@@ -634,7 +764,14 @@
       forcedGranularityMode: 'AUTO',
       kpiColumns: [],
       sites: [],
-      cells: []
+      cells: [],
+
+      // Insights & Reports (Step 4) additions
+      auditNotes: {},           // key: `${siteName}||${kpi}` -> free-text note
+      comparisonChart: null,    // Chart.js instance for the multi-KPI overlay tool
+      comparison: {             // Period B dataset for multi-period comparison
+        dataset: [], siteKey: '', cellKey: null, dateKey: '', kpiColumns: [], rows: [], fileName: ''
+      }
     };
 
     // Close Dropdowns on Click Outside
@@ -658,7 +795,7 @@
 
     function switchZone(zoneId) {
       state.activeZone = zoneId;
-      ['import', 'plot', 'actions'].forEach(id => {
+      ['import', 'plot', 'actions', 'insights'].forEach(id => {
         const sec = document.getElementById(`zone-${id}`);
         const btn = document.getElementById(`tab-${id}`);
         if (id === zoneId) {
@@ -684,6 +821,7 @@
         }
       }
       if (zoneId === 'actions') generatePlottedChartsAuditReport();
+      if (zoneId === 'insights') refreshInsightsTab();
     }
 
     function parseMetricValue(val, kpiName) {
@@ -801,6 +939,7 @@
       }
 
       const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time')) || keys[0];
+      state.dateKey = dateKey; // exposed on state for Step 4 tools (overlay chart, correlation, etc.)
 
       state.kpiColumns = keys.filter(k => {
         if (k === state.siteKey || k === state.cellKey || k === dateKey) return false;
@@ -819,26 +958,15 @@
 
       state.kpiColumns.forEach(kpi => {
         if (!state.kpiThresholds[kpi]) {
-          const name = kpi.toLowerCase();
-          let target = 99.0, warning = 97.0, critical = 95.0;
-          // direction: 'lower_is_worse' means breaching = value DROPS below critical (e.g. Availability, Success Rate)
-          //            'higher_is_worse' means breaching = value RISES above critical (e.g. PRB Utilization, Drop Rate, Latency)
-          let direction = 'lower_is_worse';
-          if (name.includes('avail') || name.includes('valid')) { target = 99.9; warning = 98.0; critical = 95.0; direction = 'lower_is_worse'; }
-          else if (name.includes('cqi')) { target = 10.0; warning = 7.0; critical = 5.0; direction = 'lower_is_worse'; }
-          else if (name.includes('prb') || name.includes('util')) { target = 50.0; warning = 75.0; critical = 88.0; direction = 'higher_is_worse'; }
-          else if (name.includes('drop')) { target = 0.5; warning = 1.5; critical = 3.0; direction = 'higher_is_worse'; }
-          else if (name.includes('lat') || name.includes('delay') || name.includes('rtt')) { target = 20.0; warning = 50.0; critical = 100.0; direction = 'higher_is_worse'; }
-          else if (name.includes('interfer') || name.includes('noise')) { target = -105.0; warning = -100.0; critical = -95.0; direction = 'higher_is_worse'; }
-          else if (name.includes('tp') || name.includes('speed') || name.includes('rate') || name.includes('throughput')) { target = 25.0; warning = 10.0; critical = 5.0; direction = 'lower_is_worse'; }
-
+          const suggested = suggestThresholdDefaults(kpi);
           state.kpiThresholds[kpi] = {
             enable: false,
-            target, showTarget: false,
-            warning, showWarning: false,
-            critical, showCritical: false,
+            target: suggested.target, showTarget: false,
+            warning: suggested.warning, showWarning: false,
+            critical: suggested.critical, showCritical: false,
             lineStyle: 'dashed',
-            direction
+            direction: suggested.direction,
+            userModified: false
           };
         } else if (!state.kpiThresholds[kpi].direction) {
           // Backfill direction for thresholds saved before this field existed
@@ -1463,6 +1591,7 @@
       });
     }
 
+    // Refreshes charts already on screen after thresholds change from an import (recomputes
     function renderKpiThresholdMatrix() {
       const matrix = document.getElementById('kpiThresholdMatrix');
       if (!matrix) return;
@@ -1541,14 +1670,210 @@
       return { suggestedMin: min - pad, suggestedMax: max + pad };
     }
 
+    // Suggests sensible Target/Warning/Critical defaults + direction for a KPI, based on its name.
+    // Shared by the initial file-load auto-fill and the "Smart Auto-Fill" button, so both stay consistent.
+    // Order matters: more specific categories (handover, access/setup) are checked before generic
+    // catch-alls like "rate"/"success", which would otherwise wrongly match KPIs like
+    // "Handover Success Rate" or "RRC Setup Success Rate".
+    function computePercentile(sortedArr, p) {
+      if (!sortedArr || sortedArr.length === 0) return null;
+      if (sortedArr.length === 1) return sortedArr[0];
+      const idx = (p / 100) * (sortedArr.length - 1);
+      const lower = Math.floor(idx);
+      const upper = Math.ceil(idx);
+      if (lower === upper) return sortedArr[lower];
+      const frac = idx - lower;
+      return sortedArr[lower] + (sortedArr[upper] - sortedArr[lower]) * frac;
+    }
+
+    // Collects every parseable numeric value currently loaded for a KPI column, across all
+    // sites/cells/timestamps — the raw distribution used to baseline "what's normal" for that KPI.
+    function getKpiValueDistribution(kpiName) {
+      if (!state.dataset || state.dataset.length === 0) return [];
+      const vals = [];
+      state.dataset.forEach(row => {
+        const v = parseMetricValue(row[kpiName], kpiName);
+        if (v !== null && !isNaN(v)) vals.push(v);
+      });
+      vals.sort((a, b) => a - b);
+      return vals;
+    }
+
+    // Suggests Target/Warning/Critical + direction for a KPI. Direction (whether higher or lower is
+    // worse) is still inferred from the KPI's name, since that's a semantic fact no amount of stats can
+    // guess. But the actual numbers are now data-driven: if enough real values are already loaded for
+    // this KPI, thresholds are baselined off that KPI's own observed distribution (percentiles) instead
+    // of generic textbook numbers — so "Drop Rate" on a network that normally runs 0.3–0.8% gets a
+    // threshold that reflects that reality, instead of a fixed guess that flags healthy cells as bad.
+    // Generic literature-style numbers are only used as a fallback when there isn't enough real data yet
+    // (e.g. right when Smart Auto-Fill runs before a file is loaded).
+    function suggestThresholdDefaults(kpiName) {
+      const name = (kpiName || '').toLowerCase();
+      // direction: 'lower_is_worse' means breaching = value DROPS below critical (e.g. Availability, Success Rate)
+      //            'higher_is_worse' means breaching = value RISES above critical (e.g. PRB Utilization, Drop Rate, Latency)
+      const rules = [
+        { match: n => n.includes('handover') || / ho /.test(` ${n} `),
+          target: 98.0, warning: 95.0, critical: 90.0, direction: 'lower_is_worse' },
+        { match: n => n.includes('access') || n.includes('rrc') || n.includes('attach') || n.includes('setup'),
+          target: 99.0, warning: 97.0, critical: 95.0, direction: 'lower_is_worse' },
+        { match: n => n.includes('drop'),
+          target: 1.0, warning: 2.0, critical: 3.0, direction: 'higher_is_worse' },
+        { match: n => n.includes('retain') || n.includes('call'),
+          target: 99.0, warning: 97.0, critical: 95.0, direction: 'lower_is_worse' },
+        { match: n => n.includes('avail') || n.includes('valid'),
+          target: 99.9, warning: 98.0, critical: 95.0, direction: 'lower_is_worse' },
+        { match: n => n.includes('cqi'),
+          target: 10.0, warning: 7.0, critical: 5.0, direction: 'lower_is_worse' },
+        { match: n => n.includes('prb') || n.includes('util'),
+          target: 50.0, warning: 75.0, critical: 88.0, direction: 'higher_is_worse' },
+        { match: n => n.includes('lat') || n.includes('delay') || n.includes('rtt'),
+          target: 20.0, warning: 50.0, critical: 100.0, direction: 'higher_is_worse' },
+        { match: n => n.includes('interfer') || n.includes('noise'),
+          target: -105.0, warning: -100.0, critical: -95.0, direction: 'higher_is_worse' },
+        { match: n => n.includes('throughput') || n.includes('tput') || n.includes('mbps') || n.includes('kbps') || n.includes('speed'),
+          target: 25.0, warning: 10.0, critical: 5.0, direction: 'lower_is_worse' },
+        { match: n => n.includes('rate') || n.includes('ratio') || n.includes('success') || n.includes('completion'),
+          target: 99.0, warning: 97.0, critical: 95.0, direction: 'lower_is_worse' },
+      ];
+      const hit = rules.find(r => r.match(name));
+      const fallback = hit
+        ? { target: hit.target, warning: hit.warning, critical: hit.critical, direction: hit.direction }
+        : { target: 99.0, warning: 97.0, critical: 95.0, direction: 'lower_is_worse' };
+
+      const values = getKpiValueDistribution(kpiName);
+      if (values.length < 10) return fallback; // not enough real data yet — use the generic default
+
+      const direction = fallback.direction;
+      const higherIsWorse = direction === 'higher_is_worse';
+      const span = values[values.length - 1] - values[0];
+      const decimals = span < 5 ? 2 : (span < 50 ? 1 : 0);
+      const round = v => Math.round(v * (10 ** decimals)) / (10 ** decimals);
+
+      let target, warning, critical;
+      if (higherIsWorse) {
+        // Target = where most cells already sit (P75); Warning/Critical creep toward the worst tail.
+        target = computePercentile(values, 75);
+        warning = computePercentile(values, 90);
+        critical = computePercentile(values, 98);
+        if (warning <= target) warning = target + Math.max(Math.abs(target) * 0.05, 0.01);
+        if (critical <= warning) critical = warning + Math.max(Math.abs(warning) * 0.05, 0.01);
+      } else {
+        target = computePercentile(values, 25);
+        warning = computePercentile(values, 10);
+        critical = computePercentile(values, 2);
+        if (warning >= target) warning = target - Math.max(Math.abs(target) * 0.02, 0.01);
+        if (critical >= warning) critical = warning - Math.max(Math.abs(warning) * 0.02, 0.01);
+      }
+
+      return { target: round(target), warning: round(warning), critical: round(critical), direction };
+    }
+
+    // ---------- Browser-persisted threshold profile (localStorage) ----------
+    // Auto-saves the full threshold config (values + Active/show toggles + direction + line style) so
+    // it survives a browser reload. Only works when this file is opened as a real page in your own
+    // browser tab (file:// or a local server) — the sandboxed in-chat preview blocks this kind of
+    // storage, so it fails silently there instead of throwing.
+    const THRESHOLD_STORAGE_KEY = 'ploochynet_kpi_thresholds_v1';
+
+    function saveThresholdsToLocalStorage() {
+      try {
+        localStorage.setItem(THRESHOLD_STORAGE_KEY, JSON.stringify(state.kpiThresholds));
+      } catch (err) {
+        // Storage unavailable (e.g. sandboxed preview, private browsing) — fail silently, nothing else changes.
+      }
+    }
+
+    function loadThresholdsFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(THRESHOLD_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+          state.kpiThresholds = saved;
+        }
+      } catch (err) {
+        // Corrupted or inaccessible storage — start fresh instead of breaking the app.
+      }
+    }
+
+    // Restore any previously-saved threshold profile as soon as the script loads, before any file
+    // is uploaded — so processParsedData() finds these already in state.kpiThresholds and reuses
+    // them for matching KPI names instead of generating fresh suggestions.
+    loadThresholdsFromLocalStorage();
+
+    // Fills Target/Warning/Critical + direction for every currently loaded KPI that the user hasn't
+    // manually edited yet. Values you've already typed in are never touched, and the Active/show-line
+    // checkboxes are always left as you set them — this only pre-fills the numbers.
+    function smartAutoFillThresholds() {
+      if (!state.kpiColumns || state.kpiColumns.length === 0) {
+        return alert('Load a data file first — there are no KPIs to auto-fill yet.');
+      }
+      let filledCount = 0;
+      state.kpiColumns.forEach(kpi => {
+        const cfg = state.kpiThresholds[kpi];
+        if (!cfg || !cfg.userModified) {
+          const suggested = suggestThresholdDefaults(kpi);
+          state.kpiThresholds[kpi] = {
+            enable: cfg ? cfg.enable : false,
+            target: suggested.target, showTarget: cfg ? cfg.showTarget : false,
+            warning: suggested.warning, showWarning: cfg ? cfg.showWarning : false,
+            critical: suggested.critical, showCritical: cfg ? cfg.showCritical : false,
+            lineStyle: cfg ? cfg.lineStyle : 'dashed',
+            direction: suggested.direction,
+            userModified: false
+          };
+          filledCount++;
+        }
+      });
+
+      renderKpiThresholdMatrix();
+      refreshChartsAfterThresholdChange();
+      saveThresholdsToLocalStorage();
+      showThresholdActionNotification(
+        filledCount > 0
+          ? `🪄 Auto-filled ${filledCount} KPI${filledCount === 1 ? '' : 's'} — anything you'd already edited was left untouched.`
+          : `Every KPI already has values you've set — nothing to auto-fill.`,
+        false
+      );
+    }
+
+    function showThresholdActionNotification(message, isError) {
+      const notif = document.getElementById('thresholdImportNotification');
+      if (!notif) return;
+      notif.className = isError
+        ? 'text-xs font-mono font-bold p-2 rounded-lg border text-rose-400 bg-rose-950/60 border-rose-800'
+        : 'text-xs font-mono font-bold p-2 rounded-lg border text-emerald-400 bg-emerald-950/60 border-emerald-800';
+      notif.innerText = message;
+      notif.classList.remove('hidden');
+      setTimeout(() => notif.classList.add('hidden'), 4000);
+    }
+
+    // Refreshes charts already on screen after thresholds change from Smart Auto-Fill (recomputes
+    // y-axis bounds too, same as a manual edit would via updateKpiThreshold).
+    function refreshChartsAfterThresholdChange() {
+      Object.keys(state.chartInstances).forEach(id => {
+        const chart = state.chartInstances[id];
+        const localCfg = state.chartLocalConfigs[id];
+        if (!chart) return;
+        if (localCfg) {
+          const yBounds = computeThresholdYBounds(localCfg.kpi, chart.data.datasets);
+          chart.options.scales.y.suggestedMin = yBounds.suggestedMin;
+          chart.options.scales.y.suggestedMax = yBounds.suggestedMax;
+        }
+        chart.update();
+      });
+    }
+
     function updateKpiThreshold(kpi, field, val) {
       if (!state.kpiThresholds[kpi]) return;
       if (['enable', 'showTarget', 'showWarning', 'showCritical'].includes(field)) {
         state.kpiThresholds[kpi][field] = val;
       } else if (field === 'lineStyle' || field === 'direction') {
         state.kpiThresholds[kpi][field] = val;
+        if (field === 'direction') state.kpiThresholds[kpi].userModified = true;
       } else {
         state.kpiThresholds[kpi][field] = parseFloat(val) || 0;
+        state.kpiThresholds[kpi].userModified = true;
       }
 
       Object.keys(state.chartInstances).forEach(id => {
@@ -1562,6 +1887,8 @@
         }
         chart.update();
       });
+
+      saveThresholdsToLocalStorage();
     }
 
     function getCheckedChartIds() {
@@ -2154,7 +2481,10 @@
       const level = severity === 'critical' ? 'Immediate action' : 'Monitor closely';
 
       const rules = [
-        { match: n => n.includes('access') || n.includes('rrc'),
+        { match: n => n.includes('handover') || n.includes('_ho_') || / ho /.test(` ${n} `),
+          diagnosis: 'Handover success rate degraded',
+          actions: ['Check A3 offset / time-to-trigger (TTT) parameters', 'Review neighbor relations & ANR-detected missing neighbors', 'Inspect X2/S1 handover signaling failures & timers'] },
+        { match: n => n.includes('access') || n.includes('rrc') || n.includes('attach') || n.includes('setup'),
           diagnosis: 'RRC/Access setup failures rising',
           actions: ['Check RACH config & PRACH root sequence', 'Review RRC congestion / admission control counters', 'Verify no cell barring or license capacity cap'] },
         { match: n => n.includes('retain') || n.includes('drop') || n.includes('call'),
@@ -2175,9 +2505,12 @@
         { match: n => n.includes('interfer') || n.includes('noise'),
           diagnosis: 'Interference / noise floor rising',
           actions: ['Run interference scan / spectrum analysis', 'Check for PIM sources or external interferers', 'Review uplink power control settings'] },
-        { match: n => n.includes('tp') || n.includes('throughput') || n.includes('speed') || n.includes('rate'),
+        { match: n => n.includes('throughput') || n.includes('tput') || n.includes('mbps') || n.includes('kbps') || n.includes('speed'),
           diagnosis: 'Throughput below target',
           actions: ['Check PRB utilization & CQI correlation', 'Verify MIMO rank / carrier aggregation status', 'Inspect backhaul capacity at the site'] },
+        { match: n => n.includes('rate') || n.includes('ratio') || n.includes('success') || n.includes('completion'),
+          diagnosis: 'Success/completion rate below target',
+          actions: ['Break down failure counters by cause code', 'Cross-check against correlated KPIs (retainability, accessibility, mobility)', 'Review recent config changes or cutover events near breach time'] },
       ];
 
       const hit = rules.find(r => r.match(name));
@@ -2219,6 +2552,30 @@
       return { status: worst ? 'Under Threshold' : 'OK', severity: worst };
     }
 
+    // Detects whether a series is trending better or worse across its FULL plotted range (not just the
+    // last 3 days), by comparing the average of the first half vs the second half. This is what surfaces
+    // cells that are still technically "OK" today but sliding in the wrong direction.
+    // The noise floor is based on the series' own standard deviation (rather than a flat % of the mean),
+    // since a flat % badly under- or over-reacts depending on whether the KPI sits near 0 or near 100.
+    function computeTrend(dsData, higherIsWorse) {
+      const pts = (dsData || []).filter(v => v !== null && v !== undefined && !isNaN(v));
+      if (pts.length < 4) return null; // not enough history to call a trend
+      const mid = Math.floor(pts.length / 2);
+      const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+      const firstAvg = avg(pts.slice(0, mid));
+      const secondAvg = avg(pts.slice(mid));
+      const diff = secondAvg - firstAvg;
+
+      const overallAvg = avg(pts);
+      const variance = pts.reduce((s, v) => s + (v - overallAvg) ** 2, 0) / pts.length;
+      const stdDev = Math.sqrt(variance);
+      const noiseFloor = Math.max(stdDev * 0.5, Math.abs(overallAvg) * 0.001, 0.001);
+
+      if (Math.abs(diff) < noiseFloor) return 'stable';
+      const gettingWorse = higherIsWorse ? diff > 0 : diff < 0;
+      return gettingWorse ? 'degrading' : 'improving';
+    }
+
     function generatePlottedChartsAuditReport() {
       const container = document.getElementById('auditReportResultContainer');
       const filterBar = document.getElementById('auditFilterBar');
@@ -2256,9 +2613,13 @@
             suggestion = `${rec.diagnosis}. ${rec.actions.join('. ')}.`;
           }
 
+          const trend = computeTrend(ds.data, higherIsWorse);
+          const noteKey = `${ds.label}||${kpi}`;
+
           rows.push({
             objectLabel: ds.label, siteName, cellName: ds.cellName || null,
-            kpi, status, severity, suggestion
+            kpi, status, severity, suggestion, trend, noteKey,
+            note: state.auditNotes[noteKey] || ''
           });
         });
       });
@@ -2334,12 +2695,23 @@
         return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border-slate-700">No Data</span>`;
       };
 
+      const trendBadge = (trend) => {
+        if (trend === 'degrading') return `<span class="text-[10px] font-mono font-bold text-rose-400">▼ Degrading</span>`;
+        if (trend === 'improving') return `<span class="text-[10px] font-mono font-bold text-emerald-400">▲ Improving</span>`;
+        if (trend === 'stable') return `<span class="text-[10px] font-mono text-slate-500">— Stable</span>`;
+        return `<span class="text-[10px] font-mono text-slate-600">n/a</span>`;
+      };
+
       const bodyRows = rows.map(r => `
         <tr class="audit-report-row border-b border-slate-800/60 hover:bg-slate-900/40" data-site="${r.siteName}">
           <td class="py-2.5 px-3 font-mono font-bold text-pink-300 text-xs whitespace-nowrap">${r.objectLabel}</td>
           <td class="py-2.5 px-3 font-mono text-amber-300 text-xs whitespace-nowrap">${r.kpi}</td>
           <td class="py-2.5 px-3">${statusBadge(r.status)}</td>
+          <td class="py-2.5 px-3 whitespace-nowrap">${trendBadge(r.trend)}</td>
           <td class="py-2.5 px-3 text-slate-300 text-[11px] leading-snug">${r.suggestion}</td>
+          <td class="py-2.5 px-3">
+            <textarea onblur="saveAuditNote('${r.noteKey.replace(/'/g, "\\'")}', this.value)" placeholder="Add a note..." rows="1" class="w-40 bg-slate-950/60 border border-slate-800 focus:border-pink-500 rounded-lg px-2 py-1 text-[11px] text-slate-200 resize-y focus:outline-none">${r.note || ''}</textarea>
+          </td>
         </tr>
       `).join('');
 
@@ -2349,7 +2721,7 @@
             <span class="text-base">🎯</span>
             <div>
               <h3 class="font-black text-white text-sm">Plotted Site / Cell Health Audit Table</h3>
-              <p class="text-[11px] text-slate-400">Evaluates threshold compliance over the past 3 days for active charts and provides corrective optimization actions.</p>
+              <p class="text-[11px] text-slate-400">Evaluates threshold compliance over the past 3 days for active charts, flags long-range trend direction, and provides corrective optimization actions.</p>
             </div>
           </div>
         </div>
@@ -2362,16 +2734,28 @@
                   <th class="py-2 px-3">Site / Cell Object</th>
                   <th class="py-2 px-3">KPI Metric</th>
                   <th class="py-2 px-3">Status (Past 3 Days)</th>
+                  <th class="py-2 px-3">Trend (Full Range)</th>
                   <th class="py-2 px-3">Optimization Suggestion / Action Plan</th>
+                  <th class="py-2 px-3">Notes</th>
                 </tr>
               </thead>
               <tbody id="auditReportTableBody">
-                ${bodyRows || `<tr><td colspan="4" class="py-6 text-center text-slate-500 font-mono italic">No objects to evaluate.</td></tr>`}
+                ${bodyRows || `<tr><td colspan="6" class="py-6 text-center text-slate-500 font-mono italic">No objects to evaluate.</td></tr>`}
               </tbody>
             </table>
           </div>
         </div>
       `;
+    }
+
+    // Saves a note typed into the audit table. Kept in-memory only (state.auditNotes) — matches the
+    // rest of the app's no-backend, client-side-only design.
+    function saveAuditNote(noteKey, value) {
+      state.auditNotes[noteKey] = value;
+      if (state.lastAuditReport) {
+        const row = state.lastAuditReport.find(r => r.noteKey === noteKey);
+        if (row) row.note = value;
+      }
     }
 
     // Export the audit report (all site/cell rows) as an Excel workbook
@@ -2385,12 +2769,575 @@
         'Cell': r.cellName || '',
         'KPI Metric': r.kpi,
         'Status (Past 3 Days)': r.status,
-        'Optimization Suggestion / Action Plan': r.suggestion
+        'Trend (Full Range)': r.trend ? r.trend.charAt(0).toUpperCase() + r.trend.slice(1) : 'N/A',
+        'Optimization Suggestion / Action Plan': r.suggestion,
+        'Notes': r.note || ''
       }));
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Audit Report');
       XLSX.writeFile(wb, 'PloochyNet_Audit_Report.xlsx');
+    }
+
+    // ============================================================
+    // STEP 4: INSIGHTS & REPORTS
+    // ============================================================
+
+    function refreshInsightsTab() {
+      generateExecutiveSummary();
+      renderCorrelationAnalysis();
+      renderHealthHeatmap();
+      populateOverlayDropdowns();
+      populateCutoverCompareDropdown();
+      renderComparisonResult();
+    }
+
+    // ---------- Executive Summary ----------
+    function generateExecutiveSummary() {
+      const el = document.getElementById('executiveSummaryContainer');
+      if (!el) return;
+      const rows = state.lastAuditReport;
+      if (!rows || rows.length === 0) {
+        el.innerText = 'Run the audit in Step 3 first, then come back here.';
+        return;
+      }
+
+      const total = rows.length;
+      const breaches = rows.filter(r => r.status === 'Under Threshold');
+      const ok = rows.filter(r => r.status === 'OK');
+      const degrading = rows.filter(r => r.trend === 'degrading');
+      const healthPct = total > 0 ? ((ok.length / total) * 100).toFixed(1) : '0.0';
+
+      const byKpi = {};
+      breaches.forEach(r => { byKpi[r.kpi] = (byKpi[r.kpi] || 0) + 1; });
+      const topKpis = Object.entries(byKpi).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+      const bySite = {};
+      breaches.forEach(r => { bySite[r.siteName] = (bySite[r.siteName] || 0) + 1; });
+      const topSites = Object.entries(bySite).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+      let text = `Across ${total} plotted site/cell × KPI combination${total === 1 ? '' : 's'}, ${ok.length} (${healthPct}%) are currently within threshold and ${breaches.length} ${breaches.length === 1 ? 'is' : 'are'} in breach over the last 3 days.`;
+
+      if (topKpis.length > 0) {
+        text += ` Most affected KPI(s): ${topKpis.map(([k, c]) => `${k} (${c})`).join(', ')}.`;
+      }
+      if (topSites.length > 0) {
+        text += ` Most affected site(s)/cell(s): ${topSites.map(([s, c]) => `${s} (${c})`).join(', ')}.`;
+      }
+      if (degrading.length > 0) {
+        text += ` ⚠ ${degrading.length} object(s) are still within threshold today but trending in the wrong direction over the full plotted range — worth watching before they breach.`;
+      } else if (breaches.length === 0) {
+        text += ` No degrading trends detected either — the currently plotted KPIs look stable.`;
+      }
+
+      el.innerText = text;
+    }
+
+    // ---------- KPI Correlation Analysis ----------
+    // Averages every dataset in a chart into a single per-timestamp series so KPIs plotted across
+    // multiple sites can still be compared against each other on the same time axis.
+    function computeAggregateSeries(chart) {
+      const labels = chart.data.labels || [];
+      const n = labels.length;
+      const sums = new Array(n).fill(0);
+      const counts = new Array(n).fill(0);
+      chart.data.datasets.forEach(ds => {
+        (ds.data || []).forEach((v, i) => {
+          if (i < n && v !== null && v !== undefined && !isNaN(v)) {
+            sums[i] += v;
+            counts[i] += 1;
+          }
+        });
+      });
+      return sums.map((s, i) => (counts[i] > 0 ? s / counts[i] : null));
+    }
+
+    function pearsonCorrelation(a, b) {
+      const pairs = [];
+      const len = Math.min(a.length, b.length);
+      for (let i = 0; i < len; i++) {
+        if (a[i] !== null && b[i] !== null && !isNaN(a[i]) && !isNaN(b[i])) pairs.push([a[i], b[i]]);
+      }
+      if (pairs.length < 4) return null;
+      const n = pairs.length;
+      const meanX = pairs.reduce((s, p) => s + p[0], 0) / n;
+      const meanY = pairs.reduce((s, p) => s + p[1], 0) / n;
+      let num = 0, denX = 0, denY = 0;
+      pairs.forEach(([x, y]) => {
+        num += (x - meanX) * (y - meanY);
+        denX += (x - meanX) ** 2;
+        denY += (y - meanY) ** 2;
+      });
+      if (denX === 0 || denY === 0) return null;
+      return num / Math.sqrt(denX * denY);
+    }
+
+    function renderCorrelationAnalysis() {
+      const container = document.getElementById('correlationContainer');
+      if (!container) return;
+      const chartIds = Object.keys(state.chartInstances);
+      if (chartIds.length < 2) {
+        container.innerHTML = `<span class="text-slate-500 italic">Plot at least 2 KPIs in Step 2 to compute correlations.</span>`;
+        return;
+      }
+
+      const series = {};
+      chartIds.forEach(id => {
+        const cfg = state.chartLocalConfigs[id];
+        const chart = state.chartInstances[id];
+        if (!cfg || !chart) return;
+        series[cfg.kpi] = computeAggregateSeries(chart);
+      });
+
+      const kpiNames = Object.keys(series);
+      const results = [];
+      for (let i = 0; i < kpiNames.length; i++) {
+        for (let j = i + 1; j < kpiNames.length; j++) {
+          const r = pearsonCorrelation(series[kpiNames[i]], series[kpiNames[j]]);
+          if (r !== null) results.push({ a: kpiNames[i], b: kpiNames[j], r });
+        }
+      }
+
+      if (results.length === 0) {
+        container.innerHTML = `<span class="text-slate-500 italic">Not enough overlapping data points to compute correlations yet.</span>`;
+        return;
+      }
+
+      results.sort((x, y) => Math.abs(y.r) - Math.abs(x.r));
+
+      const strengthLabel = (r) => {
+        const abs = Math.abs(r);
+        if (abs >= 0.7) return { text: 'Strong', color: r > 0 ? 'text-emerald-400' : 'text-rose-400' };
+        if (abs >= 0.4) return { text: 'Moderate', color: r > 0 ? 'text-emerald-300' : 'text-rose-300' };
+        return { text: 'Weak', color: 'text-slate-400' };
+      };
+
+      container.innerHTML = `
+        <div class="space-y-2">
+          ${results.slice(0, 10).map(res => {
+            const s = strengthLabel(res.r);
+            return `
+            <div class="flex items-center justify-between bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2">
+              <span class="text-xs font-mono text-slate-300">${res.a} <span class="text-slate-600">↔</span> ${res.b}</span>
+              <span class="text-xs font-mono font-bold ${s.color}">${res.r > 0 ? '+' : ''}${res.r.toFixed(2)} (${s.text} ${res.r > 0 ? 'positive' : 'negative'})</span>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    // ---------- Site / Cell Health Heatmap ----------
+    function renderHealthHeatmap() {
+      const container = document.getElementById('heatmapContainer');
+      if (!container) return;
+      const rows = state.lastAuditReport;
+      if (!rows || rows.length === 0) {
+        container.innerHTML = `<span class="italic">Run the audit in Step 3 first.</span>`;
+        return;
+      }
+
+      const objects = Array.from(new Set(rows.map(r => r.objectLabel)));
+      const kpis = Array.from(new Set(rows.map(r => r.kpi)));
+      const lookup = {};
+      rows.forEach(r => { lookup[`${r.objectLabel}||${r.kpi}`] = r; });
+
+      const cellColor = (status) => {
+        if (status === 'OK') return 'bg-emerald-600';
+        if (status === 'Under Threshold') return 'bg-rose-600';
+        if (status === 'No Threshold Set') return 'bg-slate-700';
+        return 'bg-slate-800';
+      };
+
+      // Compound-failure detector: objects breaching 2+ different KPIs at once often point to a
+      // hardware/transport-level root cause rather than an isolated RF tuning issue — surface them
+      // above the grid instead of leaving the reader to spot the pattern by eye.
+      const breachesByObject = {};
+      rows.filter(r => r.status === 'Under Threshold').forEach(r => {
+        if (!breachesByObject[r.objectLabel]) breachesByObject[r.objectLabel] = [];
+        breachesByObject[r.objectLabel].push(r.kpi);
+      });
+      const compoundFailures = Object.entries(breachesByObject)
+        .filter(([, kpiList]) => kpiList.length >= 2)
+        .sort((a, b) => b[1].length - a[1].length);
+
+      const hotspotBanner = compoundFailures.length > 0 ? `
+        <div class="mb-3 p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-[11px] text-rose-200 font-mono">
+          🔥 <span class="font-bold">${compoundFailures.length} object${compoundFailures.length === 1 ? '' : 's'}</span> breaching 2+ KPIs simultaneously — often a hardware/transport-level issue rather than isolated RF tuning:
+          <span class="text-rose-300">${compoundFailures.slice(0, 5).map(([obj, kpiList]) => `${obj} (${kpiList.length})`).join(', ')}</span>${compoundFailures.length > 5 ? '…' : ''}
+        </div>` : '';
+
+      container.innerHTML = `
+        ${hotspotBanner}
+        <table class="border-collapse text-[10px] font-mono">
+          <thead><tr>
+            <th class="sticky left-0 bg-slate-950 px-2 py-1 text-slate-400 text-left">Object</th>
+            ${kpis.map(k => `<th class="px-1.5 py-1 text-slate-400 whitespace-nowrap" title="${k}">${k.length > 14 ? k.slice(0, 14) + '…' : k}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${objects.map(obj => `
+              <tr>
+                <td class="sticky left-0 bg-slate-950 px-2 py-1 text-pink-300 font-bold whitespace-nowrap">${obj}</td>
+                ${kpis.map(k => {
+                  const cell = lookup[`${obj}||${k}`];
+                  const status = cell ? cell.status : null;
+                  const title = cell ? `${k}: ${status}` : 'No data';
+                  return `<td class="px-1 py-1"><div class="w-6 h-6 rounded ${status ? cellColor(status) : 'bg-slate-900'}" title="${title}"></div></td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="flex items-center gap-4 mt-3 text-[10px] text-slate-400">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-600 inline-block"></span> OK</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-rose-600 inline-block"></span> Under Threshold</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-slate-700 inline-block"></span> No Threshold Set</span>
+        </div>
+      `;
+    }
+
+    // ---------- Multi-KPI Overlay Chart ----------
+    function populateOverlayDropdowns() {
+      const siteSel = document.getElementById('overlaySiteSelect');
+      const kpiASel = document.getElementById('overlayKpiASelect');
+      const kpiBSel = document.getElementById('overlayKpiBSelect');
+      if (!siteSel || !kpiASel || !kpiBSel) return;
+
+      const currentSite = siteSel.value, currentA = kpiASel.value, currentB = kpiBSel.value;
+
+      siteSel.innerHTML = `<option value="">Select Site...</option>` + (state.sites || []).map(s => `<option value="${s}">${s}</option>`).join('');
+      kpiASel.innerHTML = `<option value="">Select KPI A...</option>` + (state.kpiColumns || []).map(k => `<option value="${k}">${k}</option>`).join('');
+      kpiBSel.innerHTML = `<option value="">Select KPI B...</option>` + (state.kpiColumns || []).map(k => `<option value="${k}">${k}</option>`).join('');
+
+      if ((state.sites || []).includes(currentSite)) siteSel.value = currentSite;
+      if ((state.kpiColumns || []).includes(currentA)) kpiASel.value = currentA;
+      if ((state.kpiColumns || []).includes(currentB)) kpiBSel.value = currentB;
+    }
+
+    function renderOverlayChart() {
+      const site = document.getElementById('overlaySiteSelect').value;
+      const kpiA = document.getElementById('overlayKpiASelect').value;
+      const kpiB = document.getElementById('overlayKpiBSelect').value;
+      const wrapper = document.getElementById('overlayChartWrapper');
+
+      if (!site || !kpiA || !kpiB) return alert('Pick a site and two KPIs to overlay.');
+      if (!state.dataset || state.dataset.length === 0 || !state.dateKey) return alert('Load a data file first.');
+
+      const rowsForSite = state.dataset.filter(r => String(r[state.siteKey]) === site);
+      const byDate = {};
+      rowsForSite.forEach(r => {
+        const d = r[state.dateKey];
+        if (!byDate[d]) byDate[d] = { aVals: [], bVals: [] };
+        const aVal = parseMetricValue(r[kpiA], kpiA);
+        const bVal = parseMetricValue(r[kpiB], kpiB);
+        if (aVal !== null) byDate[d].aVals.push(aVal);
+        if (bVal !== null) byDate[d].bVals.push(bVal);
+      });
+
+      const dates = Object.keys(byDate).sort();
+      const avg = arr => (arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null);
+      const seriesA = dates.map(d => avg(byDate[d].aVals));
+      const seriesB = dates.map(d => avg(byDate[d].bVals));
+
+      if (state.comparisonChart) { state.comparisonChart.destroy(); state.comparisonChart = null; }
+
+      wrapper.classList.remove('hidden');
+      const ctx = document.getElementById('overlayChartCanvas').getContext('2d');
+      state.comparisonChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            { label: `${kpiA} (${site})`, data: seriesA, borderColor: '#38bdf8', backgroundColor: '#38bdf833', yAxisID: 'yA', tension: 0.3, pointRadius: 2 },
+            { label: `${kpiB} (${site})`, data: seriesB, borderColor: '#f472b6', backgroundColor: '#f472b633', yAxisID: 'yB', tension: 0.3, pointRadius: 2 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#e2e8f0', font: { size: 10, family: 'monospace' } } },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.1)', lineWidth: 1.5 }, ticks: { color: '#94a3b8', font: { size: 9, family: 'monospace' }, maxTicksLimit: 8 } },
+            yA: { position: 'left', grid: { color: 'rgba(56,189,248,0.1)' }, ticks: { color: '#38bdf8', font: { size: 9, family: 'monospace' } } },
+            yB: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#f472b6', font: { size: 9, family: 'monospace' } } }
+          }
+        }
+      });
+    }
+
+    // ---------- Before / After Cutover Comparison ----------
+    function populateCutoverCompareDropdown() {
+      const menu = document.getElementById('cutoverCompareMenu');
+      if (!menu) return;
+      const cutovers = state.cutovers || [];
+      if (cutovers.length === 0) {
+        menu.innerHTML = `<div class="text-[11px] text-slate-500 italic p-2">No cutover events defined yet — add one in Step 2.</div>`;
+        return;
+      }
+      menu.innerHTML = cutovers.map(c => `
+        <button onclick="selectCutoverCompare('${c.id}')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 font-mono text-[11px]">
+          ${c.label} <span class="text-slate-600">(${c.time})</span>
+        </button>
+      `).join('');
+    }
+
+    function selectCutoverCompare(cutoverId) {
+      const cutover = (state.cutovers || []).find(c => c.id === cutoverId);
+      toggleDropdown('cutoverCompareMenu');
+      if (!cutover) return;
+      document.getElementById('cutoverCompareLabel').innerText = cutover.label;
+      computeCutoverComparison(cutover);
+    }
+
+    function computeCutoverComparison(cutover) {
+      const container = document.getElementById('cutoverCompareResult');
+      if (!container) return;
+
+      const chartIds = Object.keys(state.chartInstances);
+      if (chartIds.length === 0) {
+        container.innerHTML = `<span class="italic">Plot at least one KPI in Step 2 first.</span>`;
+        return;
+      }
+
+      const rows = [];
+      chartIds.forEach(id => {
+        const cfg = state.chartLocalConfigs[id];
+        const chart = state.chartInstances[id];
+        if (!cfg || !chart) return;
+        const kpi = cfg.kpi;
+        const thresh = state.kpiThresholds[kpi] || { direction: 'lower_is_worse' };
+        const higherIsWorse = thresh.direction === 'higher_is_worse';
+
+        const labels = chart.data.labels || [];
+        const cutoverIdx = labels.indexOf(cutover.time);
+        if (cutoverIdx === -1) return; // this chart's data doesn't span the cutover date
+
+        chart.data.datasets.forEach(ds => {
+          const beforeVals = (ds.data || []).slice(0, cutoverIdx).filter(v => v !== null && v !== undefined && !isNaN(v));
+          const afterVals = (ds.data || []).slice(cutoverIdx).filter(v => v !== null && v !== undefined && !isNaN(v));
+          if (beforeVals.length === 0 || afterVals.length === 0) return;
+
+          const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+          const beforeAvg = avg(beforeVals);
+          const afterAvg = avg(afterVals);
+          const delta = afterAvg - beforeAvg;
+          const pctChange = beforeAvg !== 0 ? (delta / Math.abs(beforeAvg)) * 100 : null;
+          const improved = higherIsWorse ? delta < 0 : delta > 0;
+
+          rows.push({ object: ds.label, kpi, beforeAvg, afterAvg, delta, pctChange, improved });
+        });
+      });
+
+      if (rows.length === 0) {
+        container.innerHTML = `<span class="italic">No plotted data spans this cutover date — make sure it falls within your chart's time range.</span>`;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-[11px]">
+            <thead>
+              <tr class="border-b border-slate-700 text-[10px] text-slate-400 uppercase font-mono">
+                <th class="py-2 px-3">Object</th>
+                <th class="py-2 px-3">KPI</th>
+                <th class="py-2 px-3">Before Avg</th>
+                <th class="py-2 px-3">After Avg</th>
+                <th class="py-2 px-3">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr class="border-b border-slate-800/60">
+                  <td class="py-2 px-3 font-mono font-bold text-pink-300 whitespace-nowrap">${r.object}</td>
+                  <td class="py-2 px-3 font-mono text-amber-300 whitespace-nowrap">${r.kpi}</td>
+                  <td class="py-2 px-3 font-mono text-slate-300">${r.beforeAvg.toFixed(2)}</td>
+                  <td class="py-2 px-3 font-mono text-slate-300">${r.afterAvg.toFixed(2)}</td>
+                  <td class="py-2 px-3 font-mono font-bold ${r.improved ? 'text-emerald-400' : 'text-rose-400'}">
+                    ${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(2)}${r.pctChange !== null ? ` (${r.pctChange >= 0 ? '+' : ''}${r.pctChange.toFixed(1)}%)` : ''} ${r.improved ? '✓' : '✗'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // ---------- Multi-Period Comparison ----------
+    // Parses a second file independently of the main dataset (own site/date/KPI-column detection),
+    // stored under state.comparison so it never touches the main Step 1-3 pipeline.
+    function handleComparisonFileUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const ext = file.name.split('.').pop().toLowerCase();
+      const statusEl = document.getElementById('comparisonFileStatus');
+
+      const onParsed = (rows) => {
+        if (!rows || rows.length === 0) {
+          if (statusEl) statusEl.innerText = 'Could not read any rows from that file.';
+          return;
+        }
+        const keys = Object.keys(rows[0]);
+        const siteKey = keys.find(k => {
+          const lk = k.toLowerCase();
+          return lk.includes('site') || lk.includes('enodeb') || lk.includes('node') || lk.includes('bts');
+        }) || keys[1] || keys[0];
+        const dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time')) || keys[0];
+        const kpiColumns = keys.filter(k => {
+          if (k === siteKey || k === dateKey) return false;
+          return rows.some(row => parseMetricValue(row[k], k) !== null);
+        });
+
+        state.comparison = { dataset: rows, siteKey, cellKey: null, dateKey, kpiColumns, fileName: file.name };
+        if (statusEl) statusEl.innerText = `✓ Loaded: ${file.name} (${rows.length} rows, ${kpiColumns.length} KPI column(s) detected)`;
+        renderComparisonResult();
+      };
+
+      const reader = new FileReader();
+      if (ext === 'json') {
+        reader.onload = (evt) => {
+          try { onParsed(JSON.parse(evt.target.result)); }
+          catch (err) { if (statusEl) statusEl.innerText = 'Invalid JSON file.'; }
+        };
+        reader.readAsText(file);
+      } else {
+        reader.onload = (evt) => {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            onParsed(XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" }));
+          } catch (err) { if (statusEl) statusEl.innerText = 'Error parsing spreadsheet file.'; }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    function renderComparisonResult() {
+      const container = document.getElementById('comparisonResultContainer');
+      if (!container) return;
+      const comp = state.comparison;
+      if (!comp || !comp.dataset || comp.dataset.length === 0) {
+        container.innerHTML = `<span class="italic">No comparison file loaded yet.</span>`;
+        return;
+      }
+      if (!state.dataset || state.dataset.length === 0) {
+        container.innerHTML = `<span class="italic">Load your main dataset in Step 1 first.</span>`;
+        return;
+      }
+
+      const sharedKpis = comp.kpiColumns.filter(k => state.kpiColumns.includes(k));
+      if (sharedKpis.length === 0) {
+        container.innerHTML = `<span class="italic">No matching KPI column names between the two files — nothing to compare.</span>`;
+        return;
+      }
+
+      const mainSites = Array.from(new Set(state.dataset.map(r => String(r[state.siteKey]))));
+      const compSites = Array.from(new Set(comp.dataset.map(r => String(r[comp.siteKey]))));
+      const sharedSites = mainSites.filter(s => compSites.includes(s));
+
+      if (sharedSites.length === 0) {
+        container.innerHTML = `<span class="italic">No matching site names between the two files — nothing to compare.</span>`;
+        return;
+      }
+
+      const avg = arr => (arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null);
+      const rows = [];
+      sharedSites.forEach(site => {
+        sharedKpis.forEach(kpi => {
+          const mainVals = state.dataset.filter(r => String(r[state.siteKey]) === site).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
+          const compVals = comp.dataset.filter(r => String(r[comp.siteKey]) === site).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
+          if (mainVals.length === 0 || compVals.length === 0) return;
+
+          const mainAvg = avg(mainVals);
+          const compAvg = avg(compVals);
+          const delta = mainAvg - compAvg;
+          const pctChange = compAvg !== 0 ? (delta / Math.abs(compAvg)) * 100 : null;
+
+          const thresh = state.kpiThresholds[kpi];
+          const higherIsWorse = thresh ? thresh.direction === 'higher_is_worse' : false;
+          const improved = higherIsWorse ? delta < 0 : delta > 0;
+
+          rows.push({ site, kpi, mainAvg, compAvg, delta, pctChange, improved });
+        });
+      });
+
+      if (rows.length === 0) {
+        container.innerHTML = `<span class="italic">No overlapping numeric data found to compare.</span>`;
+        return;
+      }
+
+      rows.sort((a, b) => Math.abs(b.pctChange || 0) - Math.abs(a.pctChange || 0));
+
+      container.innerHTML = `
+        <div class="text-[11px] text-slate-400 mb-2">Comparing current data vs <span class="text-slate-200 font-bold">${comp.fileName}</span> across ${sharedSites.length} shared site(s) and ${sharedKpis.length} shared KPI(s).</div>
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-[11px]">
+            <thead>
+              <tr class="border-b border-slate-700 text-[10px] text-slate-400 uppercase font-mono">
+                <th class="py-2 px-3">Site</th>
+                <th class="py-2 px-3">KPI</th>
+                <th class="py-2 px-3">Comparison Avg</th>
+                <th class="py-2 px-3">Current Avg</th>
+                <th class="py-2 px-3">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr class="border-b border-slate-800/60">
+                  <td class="py-2 px-3 font-mono font-bold text-pink-300 whitespace-nowrap">${r.site}</td>
+                  <td class="py-2 px-3 font-mono text-amber-300 whitespace-nowrap">${r.kpi}</td>
+                  <td class="py-2 px-3 font-mono text-slate-300">${r.compAvg.toFixed(2)}</td>
+                  <td class="py-2 px-3 font-mono text-slate-300">${r.mainAvg.toFixed(2)}</td>
+                  <td class="py-2 px-3 font-mono font-bold ${r.improved ? 'text-emerald-400' : 'text-rose-400'}">
+                    ${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(2)}${r.pctChange !== null ? ` (${r.pctChange >= 0 ? '+' : ''}${r.pctChange.toFixed(1)}%)` : ''} ${r.improved ? '✓' : '✗'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // ---------- PDF Export ----------
+    function exportAuditReportPDF() {
+      if (!state.lastAuditReport || state.lastAuditReport.length === 0) {
+        return alert('No audit report generated yet. Run Step 3\'s audit first.');
+      }
+      if (!window.jspdf) {
+        return alert('PDF library failed to load — check your internet connection and try again.');
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape' });
+
+      doc.setFontSize(16);
+      doc.text('PloochyNet — Site/Cell Health Audit Report', 14, 15);
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 21);
+
+      const rows = state.lastAuditReport;
+      const breaches = rows.filter(r => r.status === 'Under Threshold').length;
+      doc.text(`${rows.length} objects evaluated · ${breaches} in breach · ${rows.length - breaches} OK`, 14, 26);
+
+      doc.autoTable({
+        startY: 32,
+        head: [['Site / Cell Object', 'KPI Metric', 'Status', 'Trend', 'Suggestion', 'Notes']],
+        body: rows.map(r => [
+          r.objectLabel, r.kpi, r.status,
+          r.trend ? r.trend.charAt(0).toUpperCase() + r.trend.slice(1) : 'N/A',
+          r.suggestion, r.note || ''
+        ]),
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [219, 39, 119] },
+        columnStyles: { 4: { cellWidth: 90 }, 5: { cellWidth: 40 } }
+      });
+
+      doc.save('PloochyNet_Audit_Report.pdf');
     }
   </script>
 </body>
