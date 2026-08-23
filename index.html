@@ -22,7 +22,37 @@
       color: #f1f5f9;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
+
+    /* ============================================================
+       THEME SWITCHER
+       "Default" (dark) is the app's native palette — every color everywhere is already tuned for it.
+       Rather than re-declare colors for hundreds of individual Tailwind utility classes used throughout
+       (which would be a huge, error-prone rewrite), Light and B&W are implemented as CSS filters applied
+       to the whole app wrapper — the standard, low-risk technique for adding alternate themes on top of
+       an existing color system without touching it. This guarantees every element (including anything
+       rendered dynamically by JS, and Chart.js canvases) is themed consistently, with zero risk of a
+       missed/inconsistent color somewhere.
+       The modal (#appModal) intentionally lives OUTSIDE #app-theme-wrapper so its fixed positioning
+       isn't affected by the filter (CSS filters turn an ancestor into a new containing block for
+       fixed-position descendants, which would otherwise break the modal on a scrolled page).
+    ============================================================ */
+    #app-theme-wrapper.theme-light {
+      filter: invert(1) hue-rotate(180deg) saturate(0.75) brightness(1.08) contrast(0.94);
+    }
+    #app-theme-wrapper.theme-bw {
+      filter: grayscale(1) contrast(1.12);
+    }
+    /* The modal borrows the same filter when a non-default theme is active, so it doesn't look
+       jarringly out-of-theme when opened. */
+    body.theme-light #appModal {
+      filter: invert(1) hue-rotate(180deg) saturate(0.75) brightness(1.08) contrast(0.94);
+    }
+    body.theme-bw #appModal {
+      filter: grayscale(1) contrast(1.12);
+    }
+
     .glass-card {
+      position: relative;
       background: rgba(15, 23, 42, 0.85);
       backdrop-filter: blur(14px);
       border: 1px solid rgba(244, 114, 182, 0.2);
@@ -32,6 +62,13 @@
     .glass-card:hover {
       border-color: rgba(244, 114, 182, 0.4);
       box-shadow: 0 12px 35px -10px rgba(0, 0, 0, 0.6), 0 0 25px 0 rgba(244, 114, 182, 0.12);
+    }
+    /* backdrop-filter on .glass-card creates its own stacking context per card. Without this, an open
+       dropdown inside an earlier card can render UNDER a later sibling card, since z-index only wins
+       within the same stacking context. Bumping the whole card's z-index while its dropdown is open
+       lets the dropdown correctly float above every card below it. */
+    .glass-card.dropdown-active-card {
+      z-index: 200;
     }
     .nav-btn {
       padding: 0.6rem 1.2rem;
@@ -180,6 +217,7 @@
   </style>
 </head>
 <body class="min-h-screen flex flex-col custom-scrollbar">
+  <div id="app-theme-wrapper" class="min-h-screen flex flex-col flex-1 w-full">
 
   <!-- HEADER / NAVIGATION -->
   <header class="border-b border-pink-500/20 bg-slate-950/90 sticky top-0 z-50 backdrop-blur-xl">
@@ -208,7 +246,7 @@
         </div>
       </div>
 
-      <nav class="flex gap-2">
+      <nav class="flex gap-2 items-center">
         <button onclick="switchZone('import')" id="tab-import" class="nav-btn active">
           <span>📁</span> 1. Import
         </button>
@@ -221,6 +259,18 @@
         <button onclick="switchZone('insights')" id="tab-insights" class="nav-btn">
           <span>🧠</span> 4. Insights & Reports
         </button>
+
+        <!-- THEME SWITCHER -->
+        <div class="custom-dropdown-container" id="themeSwitcherContainer">
+          <button onclick="toggleDropdown('themeSwitcherMenu', event)" id="themeSwitcherBtn" class="nav-btn" title="Switch color theme">
+            <span id="themeSwitcherIcon">🌗</span> <span id="themeSwitcherLabel">Default</span>
+          </button>
+          <div id="themeSwitcherMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-48 bg-slate-950 border border-pink-500/50 rounded-xl p-1.5 text-xs space-y-1" onclick="event.stopPropagation()">
+            <button onclick="setTheme('default')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-200 font-bold flex items-center gap-2">🌗 Default</button>
+            <button onclick="setTheme('light')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-200 font-bold flex items-center gap-2">☀️ Light (Pastel)</button>
+            <button onclick="setTheme('bw')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-200 font-bold flex items-center gap-2">⬛ Black & White</button>
+          </div>
+        </div>
       </nav>
     </div>
   </header>
@@ -642,11 +692,41 @@
 
       <!-- KPI CORRELATION ANALYSIS -->
       <div class="glass-card p-5 space-y-3 border border-cyan-500/20">
-        <div class="flex items-center gap-2">
-          <span class="text-base">🔗</span>
-          <div>
-            <h3 class="font-black text-white text-sm">KPI Correlation Analysis</h3>
-            <p class="text-[11px] text-slate-400">Finds KPI pairs among your currently plotted charts that move together (positively or negatively).</p>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🔗</span>
+            <div>
+              <h3 class="font-black text-white text-sm">KPI Correlation Analysis</h3>
+              <p class="text-[11px] text-slate-400">Finds KPI pairs that move together — scope it to one site for a real signal, or pick exactly which KPIs to compare.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <!-- Site filter (searchable, single-select) -->
+            <div class="custom-dropdown-container" id="correlationSiteFilterContainer">
+              <button onclick="toggleDropdown('correlationSiteFilterMenu', event)" id="correlationSiteFilterBtn" class="px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-200 rounded-lg text-[11px] font-mono flex items-center gap-2">
+                <span id="correlationSiteFilterLabel">All Sites (Aggregate)</span>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="correlationSiteFilterMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-60 bg-slate-950 border border-cyan-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                <input type="text" id="correlationSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('correlationSiteFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-cyan-500 focus:outline-none font-mono mb-2">
+                <div id="correlationSiteFilterList" class="space-y-0.5 text-[11px]"></div>
+              </div>
+            </div>
+            <!-- KPI filter (searchable, multi-select) -->
+            <div class="custom-dropdown-container" id="correlationKpiFilterContainer">
+              <button onclick="toggleDropdown('correlationKpiFilterMenu', event)" id="correlationKpiFilterBtn" class="px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-200 rounded-lg text-[11px] font-mono flex items-center gap-2">
+                <span id="correlationKpiFilterLabel">All Plotted KPIs</span>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="correlationKpiFilterMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-64 bg-slate-950 border border-cyan-500/50 rounded-xl p-2 max-h-80 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                <input type="text" id="correlationKpiFilterSearch" placeholder="🔍 Search KPI..." onkeyup="filterDropdownItems('correlationKpiFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-cyan-500 focus:outline-none font-mono mb-2">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <button onclick="event.stopPropagation(); setCorrelationKpiSelection('ALL')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-cyan-300 rounded font-bold">Select All</button>
+                  <button onclick="event.stopPropagation(); setCorrelationKpiSelection('NONE')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 rounded font-bold">Clear</button>
+                </div>
+                <div id="correlationKpiFilterList" class="space-y-0.5 text-[11px]"></div>
+              </div>
+            </div>
           </div>
         </div>
         <div id="correlationContainer" class="text-xs text-slate-500 font-mono italic">Plot at least 2 KPIs in Step 2 to compute correlations.</div>
@@ -675,11 +755,23 @@
 
       <!-- SITE / CELL HEALTH HEATMAP -->
       <div class="glass-card p-5 space-y-3 border border-amber-500/20">
-        <div class="flex items-center gap-2">
-          <span class="text-base">🗺️</span>
-          <div>
-            <h3 class="font-black text-white text-sm">Site / Cell Health Heatmap</h3>
-            <p class="text-[11px] text-slate-400">Visual grid of every plotted object × KPI, colored by Step 3's audit status — spot clusters of degraded cells at a glance.</p>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🗺️</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Site / Cell Health Heatmap</h3>
+              <p class="text-[11px] text-slate-400">Visual grid of every plotted object × KPI, colored by Step 3's audit status — spot clusters of degraded cells at a glance.</p>
+            </div>
+          </div>
+          <div class="custom-dropdown-container" id="heatmapSiteFilterContainer">
+            <button onclick="toggleDropdown('heatmapSiteFilterMenu', event)" id="heatmapSiteFilterBtn" class="px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-200 rounded-lg text-[11px] font-mono flex items-center gap-2">
+              <span id="heatmapSiteFilterLabel">All Sites</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div id="heatmapSiteFilterMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-60 bg-slate-950 border border-amber-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+              <input type="text" id="heatmapSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('heatmapSiteFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-amber-500 focus:outline-none font-mono mb-2">
+              <div id="heatmapSiteFilterList" class="space-y-0.5 text-[11px]"></div>
+            </div>
           </div>
         </div>
         <div id="heatmapContainer" class="overflow-x-auto custom-scrollbar text-xs text-slate-500 font-mono italic">Run the audit in Step 3 first.</div>
@@ -738,6 +830,8 @@
 
   </main>
 
+  </div> <!-- /#app-theme-wrapper -->
+
   <!-- REUSABLE MODAL DIALOG CONTAINER -->
   <div id="appModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] hidden flex items-center justify-center p-4">
     <div class="glass-card max-w-2xl w-full p-6 space-y-5 border border-pink-500/40 bg-slate-950 shadow-2xl relative max-h-[90vh] flex flex-col justify-between" id="modalContent">
@@ -771,13 +865,17 @@
       comparisonChart: null,    // Chart.js instance for the multi-KPI overlay tool
       comparison: {             // Period B dataset for multi-period comparison
         dataset: [], siteKey: '', cellKey: null, dateKey: '', kpiColumns: [], rows: [], fileName: ''
-      }
+      },
+      correlationSiteFilter: 'ALL',      // 'ALL' = aggregate across sites, or a specific site name
+      correlationSelectedKpis: null,     // null = all plotted KPIs; otherwise an array of chosen KPI names
+      heatmapSiteFilter: 'ALL'           // 'ALL' or a specific site name
     };
 
     // Close Dropdowns on Click Outside
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.custom-dropdown-container') && !e.target.closest('#appModal')) {
         document.querySelectorAll('.custom-dropdown-menu').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.glass-card.dropdown-active-card').forEach(card => card.classList.remove('dropdown-active-card'));
       }
     });
 
@@ -786,11 +884,37 @@
       const target = document.getElementById(id);
       if (!target) return;
       const isHidden = target.classList.contains('hidden');
+
       document.querySelectorAll('.custom-dropdown-menu').forEach(el => {
         if (el.id !== id) el.classList.add('hidden');
       });
-      if (isHidden) target.classList.remove('hidden');
-      else target.classList.add('hidden');
+      // Reset the z-index boost on every card except the one we're about to open (if any).
+      document.querySelectorAll('.glass-card.dropdown-active-card').forEach(card => {
+        if (!target.closest('.glass-card') || card !== target.closest('.glass-card')) {
+          card.classList.remove('dropdown-active-card');
+        }
+      });
+
+      if (isHidden) {
+        target.classList.remove('hidden');
+        const card = target.closest('.glass-card');
+        if (card) card.classList.add('dropdown-active-card');
+      } else {
+        target.classList.add('hidden');
+        const card = target.closest('.glass-card');
+        if (card) card.classList.remove('dropdown-active-card');
+      }
+    }
+
+    // Generic live-search for any searchable dropdown list: hides items whose data-search
+    // attribute doesn't contain the typed term. Used by the Step 4 site/KPI filter dropdowns.
+    function filterDropdownItems(listId, term) {
+      const list = document.getElementById(listId);
+      if (!list) return;
+      const t = (term || '').toLowerCase();
+      list.querySelectorAll('[data-search]').forEach(el => {
+        el.classList.toggle('hidden', !el.getAttribute('data-search').includes(t));
+      });
     }
 
     function switchZone(zoneId) {
@@ -1801,6 +1925,46 @@
     // them for matching KPI names instead of generating fresh suggestions.
     loadThresholdsFromLocalStorage();
 
+    // ---------- Theme switcher (persisted in the browser, same pattern as thresholds) ----------
+    const THEME_STORAGE_KEY = 'ploochynet_theme_v1';
+    const THEME_META = {
+      default: { icon: '🌗', label: 'Default' },
+      light: { icon: '☀️', label: 'Light' },
+      bw: { icon: '⬛', label: 'B&W' }
+    };
+
+    function setTheme(theme) {
+      const wrapper = document.getElementById('app-theme-wrapper');
+      if (!wrapper) return;
+      wrapper.classList.remove('theme-light', 'theme-bw');
+      document.body.classList.remove('theme-light', 'theme-bw');
+      if (theme === 'light') { wrapper.classList.add('theme-light'); document.body.classList.add('theme-light'); }
+      if (theme === 'bw') { wrapper.classList.add('theme-bw'); document.body.classList.add('theme-bw'); }
+
+      const meta = THEME_META[theme] || THEME_META.default;
+      const icon = document.getElementById('themeSwitcherIcon');
+      const label = document.getElementById('themeSwitcherLabel');
+      if (icon) icon.innerText = meta.icon;
+      if (label) label.innerText = meta.label;
+
+      // Explicitly close (not toggle) the menu — this function also runs on page load to restore a
+      // saved theme, where there's no open dropdown to toggle, so a toggle would incorrectly open it.
+      const menu = document.getElementById('themeSwitcherMenu');
+      if (menu) menu.classList.add('hidden');
+      const card = menu ? menu.closest('.glass-card') : null;
+      if (card) card.classList.remove('dropdown-active-card');
+
+      try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch (err) { /* storage unavailable — theme just won't persist */ }
+    }
+
+    function loadThemeFromLocalStorage() {
+      try {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved && THEME_META[saved]) setTheme(saved);
+      } catch (err) { /* start on default theme */ }
+    }
+    loadThemeFromLocalStorage();
+
     // Fills Target/Warning/Critical + direction for every currently loaded KPI that the user hasn't
     // manually edited yet. Values you've already typed in are never touched, and the Active/show-line
     // checkboxes are always left as you set them — this only pre-fills the numbers.
@@ -2524,11 +2688,26 @@
     // Only bounds the user has actively turned on (showTarget/showWarning/showCritical) are checked —
     // previously this always checked warning/critical regardless of their toggle state, and ignored Target entirely.
     // Returns 'OK' or 'Under Threshold' plus the worst severity seen ('critical' | 'warning' | 'target' | null).
-    function evaluateLast3Days(ds, thresh, higherIsWorse) {
+    function evaluateLast3Days(ds, thresh, higherIsWorse, kpiName) {
       const pts = (ds.data || []).filter(v => v !== null && v !== undefined && !isNaN(v));
       const last3 = pts.slice(-3);
-      if (!thresh.enable || last3.length === 0) {
-        return { status: !thresh.enable ? 'No Threshold Set' : 'No Data', severity: null };
+
+      // No data at all in the recent window — the object likely isn't reporting (down, dropped from
+      // the feed, transport/OSS connectivity issue, etc.), regardless of whether a threshold is set.
+      // This is checked FIRST and separately from the threshold logic below.
+      if (last3.length === 0) {
+        return { status: 'Not Reporting', severity: 'critical' };
+      }
+
+      // An Availability-type KPI sitting at (or essentially at) 0% across the recent window means the
+      // site/cell is effectively down, even though it technically reported a value.
+      const isAvailabilityKpi = (kpiName || '').toLowerCase().includes('avail');
+      if (isAvailabilityKpi && last3.every(v => Math.abs(v) < 0.01)) {
+        return { status: 'Not Reporting', severity: 'critical' };
+      }
+
+      if (!thresh.enable) {
+        return { status: 'No Threshold Set', severity: null };
       }
 
       const hasCritical = !!thresh.showCritical && !isNaN(parseFloat(thresh.critical));
@@ -2601,13 +2780,13 @@
         const higherIsWorse = thresh.direction === 'higher_is_worse';
 
         chart.data.datasets.forEach(ds => {
-          const { status, severity } = evaluateLast3Days(ds, thresh, higherIsWorse);
+          const { status, severity } = evaluateLast3Days(ds, thresh, higherIsWorse, kpi);
           const siteName = ds.siteName || ds.label;
           sitesInReport.add(siteName);
 
           let suggestion = 'KPI performing within nominal thresholds. No immediate action required.';
-          if (status === 'No Threshold Set') suggestion = 'No threshold configured for this KPI — set one in Step 2 to enable monitoring.';
-          else if (status === 'No Data') suggestion = 'No data points available in the last 3 days for this object.';
+          if (status === 'Not Reporting') suggestion = 'No data reported (or 0% availability) in the last 3 days — likely a full outage. Check site power, backhaul/transport link, and OSS/EMS connectivity.';
+          else if (status === 'No Threshold Set') suggestion = 'No threshold configured for this KPI — set one in Step 2 to enable monitoring.';
           else if (status === 'Under Threshold') {
             const rec = getKpiRecommendation(kpi, severity);
             suggestion = `${rec.diagnosis}. ${rec.actions.join('. ')}.`;
@@ -2691,6 +2870,7 @@
       const statusBadge = (status) => {
         if (status === 'OK') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border-emerald-800">OK</span>`;
         if (status === 'Under Threshold') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-rose-950 text-rose-300 border-rose-800">Under Threshold</span>`;
+        if (status === 'Not Reporting') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-black text-red-400 border-red-600 animate-pulse">⚠ NOT REPORTING</span>`;
         if (status === 'No Threshold Set') return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border-slate-700">No Threshold Set</span>`;
         return `<span class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border-slate-700">No Data</span>`;
       };
@@ -2785,7 +2965,10 @@
 
     function refreshInsightsTab() {
       generateExecutiveSummary();
+      renderCorrelationSiteFilterList();
+      renderCorrelationKpiFilterList();
       renderCorrelationAnalysis();
+      renderHeatmapSiteFilterList();
       renderHealthHeatmap();
       populateOverlayDropdowns();
       populateCutoverCompareDropdown();
@@ -2804,6 +2987,7 @@
 
       const total = rows.length;
       const breaches = rows.filter(r => r.status === 'Under Threshold');
+      const notReporting = rows.filter(r => r.status === 'Not Reporting');
       const ok = rows.filter(r => r.status === 'OK');
       const degrading = rows.filter(r => r.trend === 'degrading');
       const healthPct = total > 0 ? ((ok.length / total) * 100).toFixed(1) : '0.0';
@@ -2818,6 +3002,10 @@
 
       let text = `Across ${total} plotted site/cell × KPI combination${total === 1 ? '' : 's'}, ${ok.length} (${healthPct}%) are currently within threshold and ${breaches.length} ${breaches.length === 1 ? 'is' : 'are'} in breach over the last 3 days.`;
 
+      if (notReporting.length > 0) {
+        const notReportingObjects = Array.from(new Set(notReporting.map(r => r.objectLabel)));
+        text += ` ⚠ ${notReportingObjects.length} object(s) are not reporting data or showing 0% availability — likely a full outage that needs immediate attention: ${notReportingObjects.slice(0, 5).join(', ')}${notReportingObjects.length > 5 ? '…' : ''}.`;
+      }
       if (topKpis.length > 0) {
         text += ` Most affected KPI(s): ${topKpis.map(([k, c]) => `${k} (${c})`).join(', ')}.`;
       }
@@ -2835,21 +3023,21 @@
 
     // ---------- KPI Correlation Analysis ----------
     // Averages every dataset in a chart into a single per-timestamp series so KPIs plotted across
-    // multiple sites can still be compared against each other on the same time axis.
-    function computeAggregateSeries(chart) {
-      const labels = chart.data.labels || [];
-      const n = labels.length;
-      const sums = new Array(n).fill(0);
-      const counts = new Array(n).fill(0);
-      chart.data.datasets.forEach(ds => {
-        (ds.data || []).forEach((v, i) => {
-          if (i < n && v !== null && v !== undefined && !isNaN(v)) {
-            sums[i] += v;
-            counts[i] += 1;
-          }
-        });
+    // multiple sites can still be compared against each other on the same time axis. Used for the
+    // "All Sites" view — averaging across sites can dilute or distort a per-site pattern, so this is
+    // best read as "does this relationship hold network-wide", not as a substitute for the per-site view.
+    function getPlottedSites() {
+      const sites = new Set();
+      Object.values(state.chartInstances).forEach(chart => {
+        (chart.data.datasets || []).forEach(ds => { if (ds.siteName) sites.add(ds.siteName); });
       });
-      return sums.map((s, i) => (counts[i] > 0 ? s / counts[i] : null));
+      return Array.from(sites).sort();
+    }
+
+    function getPlottedKpiNames() {
+      const kpis = new Set();
+      Object.values(state.chartLocalConfigs).forEach(cfg => { if (cfg && cfg.kpi) kpis.add(cfg.kpi); });
+      return Array.from(kpis).sort();
     }
 
     function pearsonCorrelation(a, b) {
@@ -2872,12 +3060,130 @@
       return num / Math.sqrt(denX * denY);
     }
 
+    // ---- Site filter dropdown (searchable, single-select) ----
+    function renderCorrelationSiteFilterList() {
+      const list = document.getElementById('correlationSiteFilterList');
+      if (!list) return;
+      const sites = getPlottedSites();
+      list.innerHTML = `
+        <button onclick="selectCorrelationSiteFilter('ALL')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-200 font-bold" data-search="all sites (aggregate)">
+          All Sites (Aggregate)
+        </button>
+        ${sites.map(s => `
+          <button onclick="selectCorrelationSiteFilter('${s.replace(/'/g, "\\'")}')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 font-mono" data-search="${s.toLowerCase()}">
+            ${s}
+          </button>
+        `).join('')}
+      `;
+    }
+
+    function selectCorrelationSiteFilter(site) {
+      state.correlationSiteFilter = site;
+      const label = document.getElementById('correlationSiteFilterLabel');
+      if (label) label.innerText = site === 'ALL' ? 'All Sites (Aggregate)' : site;
+      toggleDropdown('correlationSiteFilterMenu');
+      const search = document.getElementById('correlationSiteFilterSearch');
+      if (search) { search.value = ''; filterDropdownItems('correlationSiteFilterList', ''); }
+      renderCorrelationAnalysis();
+    }
+
+    // ---- KPI filter dropdown (searchable, multi-select) ----
+    function renderCorrelationKpiFilterList() {
+      const list = document.getElementById('correlationKpiFilterList');
+      if (!list) return;
+      const kpis = getPlottedKpiNames();
+      const selected = state.correlationSelectedKpis === null ? kpis : state.correlationSelectedKpis;
+      list.innerHTML = kpis.map(k => `
+        <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-900 cursor-pointer" data-search="${k.toLowerCase()}">
+          <input type="checkbox" onchange="toggleCorrelationKpi('${k.replace(/'/g, "\\'")}', this.checked)" ${selected.includes(k) ? 'checked' : ''} class="accent-cyan-500">
+          <span class="text-slate-300 font-mono">${k}</span>
+        </label>
+      `).join('') || `<div class="text-slate-500 italic px-2 py-1">No KPIs plotted yet.</div>`;
+      updateCorrelationKpiFilterLabel();
+    }
+
+    function updateCorrelationKpiFilterLabel() {
+      const label = document.getElementById('correlationKpiFilterLabel');
+      if (!label) return;
+      const kpis = getPlottedKpiNames();
+      const selected = state.correlationSelectedKpis === null ? kpis : state.correlationSelectedKpis;
+      if (kpis.length === 0) label.innerText = 'All Plotted KPIs';
+      else if (selected.length === kpis.length) label.innerText = 'All Plotted KPIs';
+      else if (selected.length === 0) label.innerText = 'No KPIs Selected';
+      else label.innerText = `${selected.length} KPI${selected.length === 1 ? '' : 's'} Selected`;
+    }
+
+    function toggleCorrelationKpi(kpi, checked) {
+      const kpis = getPlottedKpiNames();
+      let selected = state.correlationSelectedKpis === null ? kpis.slice() : state.correlationSelectedKpis.slice();
+      if (checked && !selected.includes(kpi)) selected.push(kpi);
+      if (!checked) selected = selected.filter(k => k !== kpi);
+      state.correlationSelectedKpis = selected;
+      updateCorrelationKpiFilterLabel();
+      renderCorrelationAnalysis();
+    }
+
+    function setCorrelationKpiSelection(mode) {
+      const kpis = getPlottedKpiNames();
+      state.correlationSelectedKpis = mode === 'ALL' ? kpis.slice() : [];
+      renderCorrelationKpiFilterList();
+      renderCorrelationAnalysis();
+    }
+
+    // Averages every dataset in a chart into a single per-timestamp series — used for the "All Sites"
+    // scope. Averaging across sites can dilute or distort a per-site pattern, so this is best read as
+    // "does this relationship hold network-wide", not as a substitute for scoping to one site.
+    function computeAggregateSeries(chart) {
+      const labels = chart.data.labels || [];
+      const n = labels.length;
+      const sums = new Array(n).fill(0);
+      const counts = new Array(n).fill(0);
+      chart.data.datasets.forEach(ds => {
+        (ds.data || []).forEach((v, i) => {
+          if (i < n && v !== null && v !== undefined && !isNaN(v)) {
+            sums[i] += v;
+            counts[i] += 1;
+          }
+        });
+      });
+      return sums.map((s, i) => (counts[i] > 0 ? s / counts[i] : null));
+    }
+
+    // Series scoped to ONE site's own datasets only (averaging together its cells, if any, but never
+    // mixing in other sites) — used when a specific site is picked in the filter.
+    function computeSiteScopedSeries(chart, siteName) {
+      const labels = chart.data.labels || [];
+      const n = labels.length;
+      const sums = new Array(n).fill(0);
+      const counts = new Array(n).fill(0);
+      chart.data.datasets.forEach(ds => {
+        if (ds.siteName !== siteName) return;
+        (ds.data || []).forEach((v, i) => {
+          if (i < n && v !== null && v !== undefined && !isNaN(v)) {
+            sums[i] += v;
+            counts[i] += 1;
+          }
+        });
+      });
+      return sums.map((s, i) => (counts[i] > 0 ? s / counts[i] : null));
+    }
+
     function renderCorrelationAnalysis() {
       const container = document.getElementById('correlationContainer');
       if (!container) return;
+
       const chartIds = Object.keys(state.chartInstances);
       if (chartIds.length < 2) {
         container.innerHTML = `<span class="text-slate-500 italic">Plot at least 2 KPIs in Step 2 to compute correlations.</span>`;
+        return;
+      }
+
+      const siteFilter = state.correlationSiteFilter || 'ALL';
+      const allPlottedKpis = getPlottedKpiNames();
+      const selectedKpis = state.correlationSelectedKpis === null ? allPlottedKpis : state.correlationSelectedKpis;
+
+      if (selectedKpis.length < 2) {
+        container.innerHTML = `<span class="text-slate-500 italic">Select at least 2 KPIs in the filter above to compute correlations.</span>`;
         return;
       }
 
@@ -2885,8 +3191,10 @@
       chartIds.forEach(id => {
         const cfg = state.chartLocalConfigs[id];
         const chart = state.chartInstances[id];
-        if (!cfg || !chart) return;
-        series[cfg.kpi] = computeAggregateSeries(chart);
+        if (!cfg || !chart || !selectedKpis.includes(cfg.kpi)) return;
+        series[cfg.kpi] = siteFilter === 'ALL'
+          ? computeAggregateSeries(chart)
+          : computeSiteScopedSeries(chart, siteFilter);
       });
 
       const kpiNames = Object.keys(series);
@@ -2899,7 +3207,10 @@
       }
 
       if (results.length === 0) {
-        container.innerHTML = `<span class="text-slate-500 italic">Not enough overlapping data points to compute correlations yet.</span>`;
+        const reason = siteFilter === 'ALL'
+          ? 'Not enough overlapping data points to compute correlations yet.'
+          : `Not enough overlapping data points for "${siteFilter}" specifically — try "All Sites" or a different site.`;
+        container.innerHTML = `<span class="text-slate-500 italic">${reason}</span>`;
         return;
       }
 
@@ -2912,7 +3223,12 @@
         return { text: 'Weak', color: 'text-slate-400' };
       };
 
+      const scopeNote = siteFilter === 'ALL'
+        ? `<div class="text-[10px] text-slate-500 mb-1">Scope: averaged across all plotted sites — a pattern here may not hold for every individual site.</div>`
+        : `<div class="text-[10px] text-slate-500 mb-1">Scope: <span class="text-cyan-300 font-bold">${siteFilter}</span> only.</div>`;
+
       container.innerHTML = `
+        ${scopeNote}
         <div class="space-y-2">
           ${results.slice(0, 10).map(res => {
             const s = strengthLabel(res.r);
@@ -2927,12 +3243,46 @@
     }
 
     // ---------- Site / Cell Health Heatmap ----------
+    function renderHeatmapSiteFilterList() {
+      const list = document.getElementById('heatmapSiteFilterList');
+      if (!list) return;
+      const rows = state.lastAuditReport || [];
+      const sites = Array.from(new Set(rows.map(r => r.siteName))).sort();
+      list.innerHTML = `
+        <button onclick="selectHeatmapSiteFilter('ALL')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-200 font-bold" data-search="all sites">
+          All Sites
+        </button>
+        ${sites.map(s => `
+          <button onclick="selectHeatmapSiteFilter('${s.replace(/'/g, "\\'")}')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-900 text-slate-300 font-mono" data-search="${s.toLowerCase()}">
+            ${s}
+          </button>
+        `).join('')}
+      `;
+    }
+
+    function selectHeatmapSiteFilter(site) {
+      state.heatmapSiteFilter = site;
+      const label = document.getElementById('heatmapSiteFilterLabel');
+      if (label) label.innerText = site === 'ALL' ? 'All Sites' : site;
+      toggleDropdown('heatmapSiteFilterMenu');
+      const search = document.getElementById('heatmapSiteFilterSearch');
+      if (search) { search.value = ''; filterDropdownItems('heatmapSiteFilterList', ''); }
+      renderHealthHeatmap();
+    }
+
     function renderHealthHeatmap() {
       const container = document.getElementById('heatmapContainer');
       if (!container) return;
-      const rows = state.lastAuditReport;
+      let rows = state.lastAuditReport;
       if (!rows || rows.length === 0) {
         container.innerHTML = `<span class="italic">Run the audit in Step 3 first.</span>`;
+        return;
+      }
+
+      const siteFilter = state.heatmapSiteFilter || 'ALL';
+      if (siteFilter !== 'ALL') rows = rows.filter(r => r.siteName === siteFilter);
+      if (rows.length === 0) {
+        container.innerHTML = `<span class="italic">No plotted objects for "${siteFilter}".</span>`;
         return;
       }
 
@@ -2944,15 +3294,26 @@
       const cellColor = (status) => {
         if (status === 'OK') return 'bg-emerald-600';
         if (status === 'Under Threshold') return 'bg-rose-600';
+        if (status === 'Not Reporting') return 'bg-black ring-2 ring-red-600 animate-pulse';
         if (status === 'No Threshold Set') return 'bg-slate-700';
         return 'bg-slate-800';
       };
 
-      // Compound-failure detector: objects breaching 2+ different KPIs at once often point to a
-      // hardware/transport-level root cause rather than an isolated RF tuning issue — surface them
-      // above the grid instead of leaving the reader to spot the pattern by eye.
+      // Not-reporting / down objects are the most severe state — surface a dedicated banner for them
+      // separately from the general compound-failure detector below, since a full outage deserves
+      // its own callout rather than getting buried in a KPI-breach-count list.
+      const notReportingRows = rows.filter(r => r.status === 'Not Reporting');
+      const notReportingObjects = Array.from(new Set(notReportingRows.map(r => r.objectLabel)));
+      const outageBanner = notReportingObjects.length > 0 ? `
+        <div class="mb-3 p-3 bg-black border border-red-700 rounded-xl text-[11px] text-red-300 font-mono">
+          ⚠ <span class="font-bold">${notReportingObjects.length} object${notReportingObjects.length === 1 ? '' : 's'}</span> not reporting data or showing 0% availability (likely full outage):
+          <span class="text-red-200">${notReportingObjects.slice(0, 8).join(', ')}</span>${notReportingObjects.length > 8 ? '…' : ''}
+        </div>` : '';
+
+      // Compound-failure detector: objects breaching 2+ different KPIs at once (or fully down) often
+      // point to a hardware/transport-level root cause rather than an isolated RF tuning issue.
       const breachesByObject = {};
-      rows.filter(r => r.status === 'Under Threshold').forEach(r => {
+      rows.filter(r => r.status === 'Under Threshold' || r.status === 'Not Reporting').forEach(r => {
         if (!breachesByObject[r.objectLabel]) breachesByObject[r.objectLabel] = [];
         breachesByObject[r.objectLabel].push(r.kpi);
       });
@@ -2967,6 +3328,7 @@
         </div>` : '';
 
       container.innerHTML = `
+        ${outageBanner}
         ${hotspotBanner}
         <table class="border-collapse text-[10px] font-mono">
           <thead><tr>
