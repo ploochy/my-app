@@ -489,6 +489,19 @@
           </div>
 
           <!-- KPI THRESHOLDS MATRIX -->
+          <div class="flex items-center gap-2 flex-wrap p-2.5 bg-slate-900/90 border border-cyan-500/30 rounded-xl">
+            <span class="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">📡 Bulk-set Technology:</span>
+            <select id="bulkTechSelect" class="bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2 py-1 text-[11px] font-mono font-bold">
+              <option value="2G">2G</option>
+              <option value="3G">3G</option>
+              <option value="4G">4G</option>
+              <option value="5G">5G</option>
+            </select>
+            <button onclick="bulkApplyTechnology()" class="px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg font-bold text-[11px] transition-all">
+              Apply to All KPIs
+            </button>
+            <span class="text-[10px] text-slate-500">Sets every KPI below to the same generation in one click — you can still override any individual KPI's tag afterward.</span>
+          </div>
           <div id="kpiThresholdMatrix" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs max-h-72 overflow-y-auto custom-scrollbar p-1"></div>
         </div>
       </div>
@@ -637,6 +650,11 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-300 font-bold" title="How many trailing days of data the audit evaluates when deciding OK vs Under Threshold">
+              📅 Evaluate last
+              <input type="number" id="auditLookbackDaysInput" value="3" min="1" max="90" onchange="updateAuditLookbackDays(this.value)" class="w-12 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-white font-mono text-center">
+              days
+            </label>
             <button onclick="generatePlottedChartsAuditReport()" class="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white font-black rounded-xl shadow-md transition-all text-xs flex items-center gap-2">
               <span>⚡</span> Audit Plotted Charts Now
             </button>
@@ -868,7 +886,8 @@
       },
       correlationSiteFilter: 'ALL',      // 'ALL' = aggregate across sites, or a specific site name
       correlationSelectedKpis: null,     // null = all plotted KPIs; otherwise an array of chosen KPI names
-      heatmapSiteFilter: 'ALL'           // 'ALL' or a specific site name
+      heatmapSiteFilter: 'ALL',           // 'ALL' or a specific site name
+      auditLookbackDays: 3                // how many trailing days the Step 3 audit evaluates (was hardcoded to 3)
     };
 
     // Close Dropdowns on Click Outside
@@ -962,6 +981,48 @@
         }
       }
       return isNaN(num) ? null : num;
+    }
+
+    // Detects individual VALUES (not whole columns) inside percentage-named KPI columns that look like
+    // raw fractions (≤1.5) instead of 0–100 — common when a KPI is exported from an NMS/OSS tool without
+    // real "Percentage" cell formatting. This checks per-row, not per-column, because the same column can
+    // have a MIX: some rows correctly at 98, others at 0.98. A column-level "is the whole column
+    // fractional?" check misses that mix entirely (the max value in the column is >1.5 because of the
+    // correct rows, so the whole column looked fine even though some individual rows were still wrong).
+    //
+    // Only fires on columns explicitly labeled with '%' AND whose KPI category is normally expected to
+    // sit close to 100% (availability, setup/access success, retainability, handover success, generic
+    // success/completion rate) — where a small value like 0.98 is implausible as a genuine reading and
+    // is almost certainly a mis-scaled fraction. It deliberately does NOT fire on categories like
+    // interference, drop rate, PRB/utilization, CQI, latency, or throughput — for those, a small
+    // percentage (0.5%, 1.2%) is often the normal, healthy reading (e.g. "% of samples in the worst
+    // interference band" should usually be low), and this heuristic can't tell that apart from a
+    // genuinely mis-scaled fraction. Flagging those would corrupt correct data. Never changes anything
+    // without asking first either way.
+    const FRACTIONAL_PERCENT_ELIGIBLE_CATEGORIES = ['avail', 'access', 'retain', 'handover', 'generic'];
+
+    function detectFractionalPercentValues() {
+      const affected = {}; // { kpiName: count of suspect cells }
+      state.kpiColumns.forEach(kpi => {
+        if (!kpi.includes('%')) return;
+        if (!FRACTIONAL_PERCENT_ELIGIBLE_CATEGORIES.includes(detectKpiCategory(kpi))) return;
+        let count = 0;
+        state.dataset.forEach(row => {
+          const v = parseMetricValue(row[kpi], kpi);
+          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= 1.5) count++;
+        });
+        if (count > 0) affected[kpi] = count;
+      });
+      return affected;
+    }
+
+    function rescaleFractionalPercentValues(affected) {
+      Object.keys(affected).forEach(kpi => {
+        state.dataset.forEach(row => {
+          const v = parseMetricValue(row[kpi], kpi);
+          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= 1.5) row[kpi] = v * 100;
+        });
+      });
     }
 
     function handleFileUpload(e) {
@@ -1073,6 +1134,21 @@
         });
       });
 
+      // Catch percentage-named columns with individual values that came through as raw fractions
+      // (0.98 instead of 98) — this checks per-row so it also catches columns with a MIX of correct
+      // and fractional values, not just columns that are fractional end-to-end. Ask before touching
+      // anything, never silently rewrite what you uploaded.
+      const fractionalPercentValues = detectFractionalPercentValues();
+      const fractionalPercentCols = Object.keys(fractionalPercentValues);
+      if (fractionalPercentCols.length > 0) {
+        const totalCells = Object.values(fractionalPercentValues).reduce((a, b) => a + b, 0);
+        const detailLines = fractionalPercentCols.map(k => `${k} — ${fractionalPercentValues[k]} cell(s)`).join('\n');
+        const proceed = confirm(
+          `Heads up: ${totalCells} value(s) across ${fractionalPercentCols.length} column(s) are named as percentages but stored as 0–1 fractions instead of 0–100 (e.g. 0.98 instead of 98):\n\n${detailLines}\n\nThis checks EACH value individually, so it also catches columns where only some rows are affected (e.g. some rows correctly at 98, others still at 0.98).\n\nRescale just those affected values ×100? Correctly-scaled values in the same column are left untouched either way.\n\nClick Cancel to keep the file's values exactly as-is.`
+        );
+        if (proceed) rescaleFractionalPercentValues(fractionalPercentValues);
+      }
+
       state.sites = Array.from(new Set(state.dataset.map(d => String(d[state.siteKey])))).filter(Boolean);
       state.cells = state.cellKey ? Array.from(new Set(state.dataset.map(d => String(d[state.cellKey])))).filter(Boolean) : [];
 
@@ -1090,11 +1166,18 @@
             critical: suggested.critical, showCritical: false,
             lineStyle: 'dashed',
             direction: suggested.direction,
+            technology: detectTechnology(kpi) || 'UNKNOWN',
             userModified: false
           };
-        } else if (!state.kpiThresholds[kpi].direction) {
-          // Backfill direction for thresholds saved before this field existed
-          state.kpiThresholds[kpi].direction = 'lower_is_worse';
+        } else {
+          if (!state.kpiThresholds[kpi].direction) {
+            // Backfill direction for thresholds saved before this field existed
+            state.kpiThresholds[kpi].direction = 'lower_is_worse';
+          }
+          if (!state.kpiThresholds[kpi].technology) {
+            // Backfill technology for thresholds saved before this field existed
+            state.kpiThresholds[kpi].technology = detectTechnology(kpi) || 'UNKNOWN';
+          }
         }
       });
 
@@ -1716,17 +1799,69 @@
     }
 
     // Refreshes charts already on screen after thresholds change from an import (recomputes
+    // Sets the same technology tag on every currently loaded KPI in one click (bulk override). Individual
+    // KPIs can still be corrected afterward via their own per-KPI dropdown — this is just a fast starting
+    // point for datasets where most/all plotted KPIs belong to the same generation.
+    // Updates how many trailing days the Step 3 audit evaluates (was hardcoded to 3). Doesn't
+    // auto-re-run the audit — the person still clicks "Audit Plotted Charts Now" to apply it, same as
+    // any other audit setting.
+    function updateAuditLookbackDays(value) {
+      const days = Math.max(1, Math.min(90, parseInt(value, 10) || 3));
+      state.auditLookbackDays = days;
+      const input = document.getElementById('auditLookbackDaysInput');
+      if (input) input.value = days;
+      try { localStorage.setItem('ploochynet_audit_lookback_days_v1', String(days)); } catch (err) { /* not persisted this session */ }
+    }
+
+    function loadAuditLookbackDaysFromLocalStorage() {
+      try {
+        const saved = localStorage.getItem('ploochynet_audit_lookback_days_v1');
+        if (saved) {
+          const days = Math.max(1, Math.min(90, parseInt(saved, 10) || 3));
+          state.auditLookbackDays = days;
+          const input = document.getElementById('auditLookbackDaysInput');
+          if (input) input.value = days;
+        }
+      } catch (err) { /* start on default of 3 days */ }
+    }
+
+    function bulkApplyTechnology() {
+      const select = document.getElementById('bulkTechSelect');
+      if (!select || !state.kpiColumns || state.kpiColumns.length === 0) {
+        return alert('Load a data file first — there are no KPIs to tag yet.');
+      }
+      const tech = select.value;
+      state.kpiColumns.forEach(kpi => {
+        if (!state.kpiThresholds[kpi]) return;
+        state.kpiThresholds[kpi].technology = tech;
+        state.kpiThresholds[kpi].userModified = true;
+      });
+      renderKpiThresholdMatrix();
+      saveThresholdsToLocalStorage();
+      showThresholdActionNotification(`📡 Tagged all ${state.kpiColumns.length} KPI(s) as ${tech}. You can still override any individual one below.`, false);
+    }
+
     function renderKpiThresholdMatrix() {
       const matrix = document.getElementById('kpiThresholdMatrix');
       if (!matrix) return;
       matrix.innerHTML = '';
 
       state.kpiColumns.forEach(kpi => {
-        const cfg = state.kpiThresholds[kpi] || { enable: false, target: 99.0, showTarget: false, warning: 97.0, showWarning: false, critical: 95.0, showCritical: false, lineStyle: 'dashed', direction: 'lower_is_worse' };
+        const cfg = state.kpiThresholds[kpi] || { enable: false, target: 99.0, showTarget: false, warning: 97.0, showWarning: false, critical: 95.0, showCritical: false, lineStyle: 'dashed', direction: 'lower_is_worse', technology: 'UNKNOWN' };
+        const tech = cfg.technology || 'UNKNOWN';
         matrix.innerHTML += `
           <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <span class="font-bold text-amber-300 font-mono text-xs">${kpi}</span>
+            <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 flex-wrap gap-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold text-amber-300 font-mono text-xs">${kpi}</span>
+                <select onchange="updateKpiThreshold('${kpi}', 'technology', this.value)" title="Network generation — used to give a technology-correct diagnosis & recommended actions" class="bg-slate-950 border ${tech === 'UNKNOWN' ? 'border-amber-600 text-amber-400' : 'border-cyan-700 text-cyan-300'} rounded px-1.5 py-0.5 text-[10px] font-mono font-bold">
+                  <option value="UNKNOWN" ${tech === 'UNKNOWN' ? 'selected' : ''}>❔ Tech?</option>
+                  <option value="2G" ${tech === '2G' ? 'selected' : ''}>2G</option>
+                  <option value="3G" ${tech === '3G' ? 'selected' : ''}>3G</option>
+                  <option value="4G" ${tech === '4G' ? 'selected' : ''}>4G</option>
+                  <option value="5G" ${tech === '5G' ? 'selected' : ''}>5G</option>
+                </select>
+              </div>
               <div class="flex items-center gap-2">
                 <select onchange="updateKpiThreshold('${kpi}', 'direction', this.value)" title="Which direction counts as a breach" class="bg-slate-950 border border-slate-700 text-slate-300 rounded px-1.5 py-0.5 text-[10px] font-mono">
                   <option value="lower_is_worse" ${cfg.direction !== 'higher_is_worse' ? 'selected' : ''}>▼ Lower = Worse</option>
@@ -1799,6 +1934,124 @@
     // Order matters: more specific categories (handover, access/setup) are checked before generic
     // catch-alls like "rate"/"success", which would otherwise wrongly match KPIs like
     // "Handover Success Rate" or "RRC Setup Success Rate".
+    // Guesses the network generation (2G/3G/4G/5G) a KPI belongs to, purely from its name. This is a
+    // best-effort first pass, not a guarantee — acronyms like "CSSR" don't literally say which
+    // generation they're from, so this can (and will) sometimes return null. Callers should treat a
+    // null/'UNKNOWN' result as "ask the user", never silently assume one generation over another.
+    function detectTechnology(kpiName) {
+      const n = (kpiName || '').toLowerCase();
+      if (/\b5g\b|\bnr\b|gnb|gnodeb|\bnsa\b|\ben-?dc\b|xn interface/.test(n)) return '5G';
+      if (/\b4g\b|\blte\b|eutran|enodeb|\benb\b|volte|\bx2\b|\bs1\b/.test(n)) return '4G';
+      if (/\b3g\b|umts|wcdma|utran|\brnc\b|nodeb|hsdpa|hsupa|\bhspa\b|\biub\b/.test(n)) return '3G';
+      if (/\b2g\b|\bgsm\b|geran|\bbsc\b|\bbts\b|\babis\b|\bater\b|\bedge\b/.test(n)) return '2G';
+      return null;
+    }
+
+    // Which KPI category a name belongs to (independent of technology) — same category keywords used
+    // by the old single recommendation engine, now just used to pick a row in the tech-aware matrix below.
+    function detectKpiCategory(kpiName) {
+      const n = (kpiName || '').toLowerCase();
+      const rules = [
+        { cat: 'handover', match: n => n.includes('handover') || n.includes('_ho_') || / ho /.test(` ${n} `) },
+        { cat: 'access', match: n => n.includes('access') || n.includes('rrc') || n.includes('attach') || n.includes('setup') || n.includes('cssr') },
+        { cat: 'drop', match: n => n.includes('drop') },
+        { cat: 'retain', match: n => n.includes('retain') || n.includes('call') },
+        { cat: 'avail', match: n => n.includes('avail') || n.includes('valid') },
+        { cat: 'cqi', match: n => n.includes('cqi') || n.includes('ecno') || n.includes('ec/no') || n.includes('rscp') },
+        { cat: 'prb', match: n => n.includes('prb') || n.includes('util') || n.includes('congestion') },
+        { cat: 'latency', match: n => n.includes('lat') || n.includes('delay') || n.includes('rtt') },
+        { cat: 'interference', match: n => n.includes('interfer') || n.includes('noise') || n.includes('rtwp') },
+        { cat: 'throughput', match: n => n.includes('throughput') || n.includes('tput') || n.includes('mbps') || n.includes('kbps') || n.includes('speed') },
+        { cat: 'generic', match: n => n.includes('rate') || n.includes('ratio') || n.includes('success') || n.includes('completion') },
+      ];
+      const hit = rules.find(r => r.match(n));
+      return hit ? hit.cat : 'generic';
+    }
+
+    // Technology-specific diagnosis + actions per KPI category. 'UNKNOWN' is used whenever the
+    // technology can't be confirmed (auto-detect returned null and the user hasn't manually tagged the
+    // KPI yet) — it stays deliberately generic/tech-neutral rather than guessing a generation, which is
+    // exactly the bug this replaces (previously everything silently fell back to 4G wording).
+    const KPI_RECOMMENDATION_MATRIX = {
+      handover: {
+        '2G': { diagnosis: 'Handover success rate degraded (2G/GSM)', actions: ['Check BSC handover thresholds (RXLEV/RXQUAL) & neighbor list', 'Review Abis/Ater transmission link quality', 'Inspect timing advance / cell reselection parameters'] },
+        '3G': { diagnosis: 'Handover success rate degraded (3G/UMTS)', actions: ['Check RNC soft/softer handover parameters & active set size', 'Review Iub transmission link capacity', 'Verify intra/inter-frequency neighbor cell list completeness'] },
+        '4G': { diagnosis: 'Handover success rate degraded (4G/LTE)', actions: ['Check A3 offset / time-to-trigger (TTT) parameters', 'Review neighbor relations & ANR-detected missing neighbors', 'Inspect X2/S1 handover signaling failures & timers'] },
+        '5G': { diagnosis: 'Handover success rate degraded (5G/NR)', actions: ['Check NR mobility event thresholds (A3/A5) & beam switching', 'Review Xn/N2 handover signaling', 'If NSA, verify EN-DC anchor (LTE) stability'] },
+        'UNKNOWN': { diagnosis: 'Handover success rate degraded', actions: ['Confirm which generation (2G/3G/4G/5G) this KPI belongs to — tag it above for a technology-specific diagnosis', 'Review neighbor list / handover parameters and relevant transport link (Abis/Iub/X2/Xn)'] }
+      },
+      access: {
+        '2G': { diagnosis: 'Call/session setup failures rising (2G/GSM — CSSR)', actions: ['Check TCH/SDCCH channel congestion & blocking', 'Review Abis link capacity and BSC admission control', 'Inspect BTS alarms and timing advance'] },
+        '3G': { diagnosis: 'Call/session setup failures rising (3G/UMTS — CSSR)', actions: ['Check RNC admission control & RAB assignment failures', 'Review Iub/Iu interface capacity and NodeB channel element (CE) resource', 'Inspect congestion on the RNC'] },
+        '4G': { diagnosis: 'RRC/Access setup failures rising (4G/LTE)', actions: ['Check RACH config & PRACH root sequence', 'Review RRC congestion / admission control counters', 'Verify no cell barring or license capacity cap'] },
+        '5G': { diagnosis: 'Access setup failures rising (5G/NR)', actions: ['Check NR RACH/beam management config', 'Review gNodeB admission control & N2/N1 signaling to AMF', 'Verify no slicing-related admission restriction'] },
+        'UNKNOWN': { diagnosis: 'Call/session setup failures rising (CSSR/RRC/Attach)', actions: ['Confirm which generation this KPI belongs to — tag it above (2G uses BSC/TCH, 3G uses RNC/RAB, 4G uses RRC/RACH, 5G uses gNodeB/N2)', 'Once tagged, re-check this KPI for a technology-specific diagnosis'] }
+      },
+      drop: {
+        '2G': { diagnosis: 'Call drop rate elevated (2G/GSM)', actions: ['Check TCH drop causes (RF loss, Abis/Ater failure)', 'Review co-channel/adjacent-channel interference', 'Inspect timing advance overflow (cell too large)'] },
+        '3G': { diagnosis: 'Call drop rate elevated (3G/UMTS)', actions: ['Check RAB release causes & soft handover failures', 'Review Iub congestion and NodeB/RNC alarms', 'Inspect uplink interference (RTWP)'] },
+        '4G': { diagnosis: 'Call/session drop rate elevated (4G/LTE)', actions: ['Check handover failure causes (HO out/in)', 'Review radio link failure (RLF) counters', 'Inspect neighbor list & X2/S1 handover config'] },
+        '5G': { diagnosis: 'Call/session drop rate elevated (5G/NR)', actions: ['Check NR radio link failure (RLF) & beam failure recovery counters', 'Review Xn/N2 handover config', 'If NSA, check EN-DC split bearer stability'] },
+        'UNKNOWN': { diagnosis: 'Call/session drop rate elevated', actions: ['Confirm which generation this KPI belongs to — tag it above for technology-specific causes (RF loss, RAB release, RLF, or NR beam failure)', 'Cross-check against handover and interference KPIs for the same object'] }
+      },
+      retain: {
+        '2G': { diagnosis: 'Call retainability degraded (2G/GSM)', actions: ['Check TCH drop causes & BTS alarms', 'Review Abis/Ater transmission stability', 'Inspect frequency planning for co-/adjacent-channel interference'] },
+        '3G': { diagnosis: 'Call retainability degraded (3G/UMTS)', actions: ['Check RAB release causes and RNC/NodeB alarms', 'Review Iub congestion', 'Inspect soft handover failure rate'] },
+        '4G': { diagnosis: 'Call/session retainability degraded (4G/LTE)', actions: ['Check radio link failure (RLF) counters', 'Review handover failure causes (HO out/in)', 'Inspect X2/S1 signaling for the affected object'] },
+        '5G': { diagnosis: 'Call/session retainability degraded (5G/NR)', actions: ['Check NR RLF & beam failure recovery counters', 'Review Xn/N2 handover signaling', 'If NSA, check EN-DC anchor stability'] },
+        'UNKNOWN': { diagnosis: 'Call/session retainability degraded', actions: ['Confirm which generation this KPI belongs to — tag it above for a technology-specific diagnosis', 'Cross-check against drop rate and handover KPIs for the same object'] }
+      },
+      avail: {
+        '2G': { diagnosis: 'Cell availability degraded (2G/GSM)', actions: ['Check BTS alarms & power supply', 'Review Abis/Ater transmission link status', 'Confirm no unlogged maintenance activity'] },
+        '3G': { diagnosis: 'Cell availability degraded (3G/UMTS)', actions: ['Check NodeB alarms & RNC connectivity', 'Review Iub transmission link status', 'Confirm no unlogged maintenance activity'] },
+        '4G': { diagnosis: 'Cell availability degraded (4G/LTE)', actions: ['Check for unplanned outages / VSWR alarms', 'Review transmission link (backhaul/S1) status', 'Confirm no ongoing maintenance not logged as cutover'] },
+        '5G': { diagnosis: 'Cell availability degraded (5G/NR)', actions: ['Check gNodeB alarms & active antenna system (AAS) status', 'Review fronthaul/midhaul transmission link', 'Confirm no unlogged maintenance activity'] },
+        'UNKNOWN': { diagnosis: 'Cell availability degraded', actions: ['Confirm which generation this KPI belongs to — tag it above for the right transport link to check (Abis/Iub/backhaul/fronthaul)', 'Check for site alarms and unplanned outages regardless of generation'] }
+      },
+      cqi: {
+        '2G': { diagnosis: 'Radio link quality degraded (2G/GSM — RXQUAL)', actions: ['Check for co-/adjacent-channel interference', 'Review frequency planning & hopping sequence', 'Inspect coverage vs cell edge distribution'] },
+        '3G': { diagnosis: 'Radio link quality degraded (3G/UMTS — Ec/No, RSCP)', actions: ['Check for pilot pollution & scrambling code conflicts', 'Review RF tilt / azimuth vs coverage plan', 'Inspect uplink interference (RTWP)'] },
+        '4G': { diagnosis: 'Channel quality (CQI) degraded (4G/LTE)', actions: ['Check for interference or overshooting cells', 'Review RF tilt / azimuth vs coverage plan', 'Inspect UE distribution vs cell edge coverage'] },
+        '5G': { diagnosis: 'Channel quality degraded (5G/NR — SS-RSRP/SINR)', actions: ['Check beam management & mMIMO configuration', 'Review RF tilt/azimuth and overshooting beams', 'Inspect interference from neighboring beams/cells'] },
+        'UNKNOWN': { diagnosis: 'Radio link quality degraded', actions: ['Confirm which generation this KPI belongs to — tag it above (metric differs: RXQUAL for 2G, Ec/No for 3G, CQI for 4G, SINR for 5G)', 'Check for interference and overshooting coverage regardless of generation'] }
+      },
+      prb: {
+        '2G': { diagnosis: 'Traffic channel congestion high (2G/GSM)', actions: ['Check TCH/SDCCH blocking vs Erlang traffic', 'Evaluate capacity expansion (TRX addition)', 'Review traffic distribution across sectors'] },
+        '3G': { diagnosis: 'Resource utilization / congestion high (3G/UMTS)', actions: ['Check channel element (CE) and OVSF code utilization', 'Review NodeB power utilization', 'Evaluate capacity expansion or carrier addition'] },
+        '4G': { diagnosis: 'PRB utilization / congestion high (4G/LTE)', actions: ['Evaluate capacity expansion (carrier aggregation, new carrier)', 'Check load balancing between sectors/layers', 'Review traffic steering thresholds'] },
+        '5G': { diagnosis: 'PRB utilization / congestion high (5G/NR)', actions: ['Evaluate capacity expansion (additional carriers, DSS tuning)', 'Check load balancing between beams/layers', 'Review network slicing resource allocation'] },
+        'UNKNOWN': { diagnosis: 'Resource utilization / congestion high', actions: ['Confirm which generation this KPI belongs to — tag it above for the right resource to check (TCH, CE/OVSF, PRB, or NR PRB)', 'Evaluate capacity expansion regardless of generation'] }
+      },
+      latency: {
+        '2G': { diagnosis: 'Latency above acceptable range (2G/GSM)', actions: ['Check Abis/Ater transmission delay', 'Review BSC processing load', 'Inspect signaling link congestion'] },
+        '3G': { diagnosis: 'Latency/RTT above acceptable range (3G/UMTS)', actions: ['Check Iub/Iu transmission delay', 'Review RNC processing load', 'Inspect core network routing'] },
+        '4G': { diagnosis: 'Latency/RTT above acceptable range (4G/LTE)', actions: ['Check backhaul congestion / QoS marking', 'Review core network routing & S1-U path', 'Inspect scheduler config for delay-sensitive bearers'] },
+        '5G': { diagnosis: 'Latency above acceptable range (5G/NR)', actions: ['Check fronthaul/midhaul transmission delay', 'Review edge computing (MEC) placement', 'Inspect network slicing SLA / scheduler config'] },
+        'UNKNOWN': { diagnosis: 'Latency/RTT above acceptable range', actions: ['Confirm which generation this KPI belongs to — tag it above for the right transport segment to check', 'Review transmission delay and core routing regardless of generation'] }
+      },
+      interference: {
+        '2G': { diagnosis: 'Interference / noise floor rising (2G/GSM)', actions: ['Run frequency plan audit for co-/adjacent-channel reuse', 'Check for external interferers near the site', 'Review hopping sequence configuration'] },
+        '3G': { diagnosis: 'Uplink interference rising (3G/UMTS — RTWP)', actions: ['Check for pilot pollution & scrambling code plan conflicts', 'Run interference scan / spectrum analysis', 'Review uplink power control settings'] },
+        '4G': { diagnosis: 'Interference / noise floor rising (4G/LTE)', actions: ['Run interference scan / spectrum analysis', 'Check for PIM sources or external interferers', 'Review uplink power control settings'] },
+        '5G': { diagnosis: 'Interference / noise floor rising (5G/NR)', actions: ['Check for inter-beam interference or PIM sources', 'Review spectrum sharing conflicts (DSS) if applicable', 'Run interference scan / spectrum analysis'] },
+        'UNKNOWN': { diagnosis: 'Interference / noise floor rising', actions: ['Confirm which generation this KPI belongs to — tag it above for a technology-specific check', 'Run an interference scan / spectrum analysis regardless of generation'] }
+      },
+      throughput: {
+        '2G': { diagnosis: 'Data throughput below target (2G/EDGE)', actions: ['Check coding scheme (CS/MCS) selection', 'Review timeslot allocation & TRX capacity', 'Inspect Abis backhaul capacity'] },
+        '3G': { diagnosis: 'Data throughput below target (3G/HSPA)', actions: ['Check HSDPA/HSUPA code allocation', 'Review Iub backhaul capacity', 'Inspect CQI-based scheduling efficiency'] },
+        '4G': { diagnosis: 'Throughput below target (4G/LTE)', actions: ['Check PRB utilization & CQI correlation', 'Verify MIMO rank / carrier aggregation status', 'Inspect backhaul capacity at the site'] },
+        '5G': { diagnosis: 'Throughput below target (5G/NR)', actions: ['Check MIMO layer count / beamforming performance', 'Verify network slicing bandwidth allocation', 'Inspect fronthaul/midhaul capacity at the site'] },
+        'UNKNOWN': { diagnosis: 'Throughput below target', actions: ['Confirm which generation this KPI belongs to — tag it above for a technology-specific diagnosis', 'Check backhaul capacity and radio scheduling regardless of generation'] }
+      },
+      generic: {
+        '2G': { diagnosis: 'Success/completion rate below target (2G/GSM)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 2G KPIs (TCH congestion, Abis link)', 'Review recent config changes near breach time'] },
+        '3G': { diagnosis: 'Success/completion rate below target (3G/UMTS)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 3G KPIs (RAB, Iub congestion)', 'Review recent config changes near breach time'] },
+        '4G': { diagnosis: 'Success/completion rate below target (4G/LTE)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 4G KPIs (retainability, accessibility, mobility)', 'Review recent config changes or cutover events near breach time'] },
+        '5G': { diagnosis: 'Success/completion rate below target (5G/NR)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 5G KPIs (mobility, RLF, slicing admission)', 'Review recent config changes near breach time'] },
+        'UNKNOWN': { diagnosis: 'Success/completion rate below target', actions: ['Confirm which generation this KPI belongs to — tag it above for technology-specific correlated KPIs to check', 'Break down failure counters by cause code regardless of generation'] }
+      }
+    };
+
     function computePercentile(sortedArr, p) {
       if (!sortedArr || sortedArr.length === 0) return null;
       if (sortedArr.length === 1) return sortedArr[0];
@@ -1964,6 +2217,7 @@
       } catch (err) { /* start on default theme */ }
     }
     loadThemeFromLocalStorage();
+    loadAuditLookbackDaysFromLocalStorage();
 
     // Fills Target/Warning/Critical + direction for every currently loaded KPI that the user hasn't
     // manually edited yet. Values you've already typed in are never touched, and the Active/show-line
@@ -1984,6 +2238,7 @@
             critical: suggested.critical, showCritical: cfg ? cfg.showCritical : false,
             lineStyle: cfg ? cfg.lineStyle : 'dashed',
             direction: suggested.direction,
+            technology: (cfg && cfg.technology) || detectTechnology(kpi) || 'UNKNOWN',
             userModified: false
           };
           filledCount++;
@@ -2032,9 +2287,9 @@
       if (!state.kpiThresholds[kpi]) return;
       if (['enable', 'showTarget', 'showWarning', 'showCritical'].includes(field)) {
         state.kpiThresholds[kpi][field] = val;
-      } else if (field === 'lineStyle' || field === 'direction') {
+      } else if (field === 'lineStyle' || field === 'direction' || field === 'technology') {
         state.kpiThresholds[kpi][field] = val;
-        if (field === 'direction') state.kpiThresholds[kpi].userModified = true;
+        if (field === 'direction' || field === 'technology') state.kpiThresholds[kpi].userModified = true;
       } else {
         state.kpiThresholds[kpi][field] = parseFloat(val) || 0;
         state.kpiThresholds[kpi].userModified = true;
@@ -2641,68 +2896,47 @@
     // KPI -> troubleshooting knowledge base. Matched by keyword against the KPI column name.
     // Returns an object with a short diagnosis blurb and concrete next steps for a CRITICAL breach.
     function getKpiRecommendation(kpiName, severity) {
-      const name = (kpiName || '').toLowerCase();
       const level = severity === 'critical' ? 'Immediate action' : 'Monitor closely';
+      const category = detectKpiCategory(kpiName);
+      const cfg = state.kpiThresholds[kpiName];
+      const technology = (cfg && cfg.technology) || detectTechnology(kpiName) || 'UNKNOWN';
 
-      const rules = [
-        { match: n => n.includes('handover') || n.includes('_ho_') || / ho /.test(` ${n} `),
-          diagnosis: 'Handover success rate degraded',
-          actions: ['Check A3 offset / time-to-trigger (TTT) parameters', 'Review neighbor relations & ANR-detected missing neighbors', 'Inspect X2/S1 handover signaling failures & timers'] },
-        { match: n => n.includes('access') || n.includes('rrc') || n.includes('attach') || n.includes('setup'),
-          diagnosis: 'RRC/Access setup failures rising',
-          actions: ['Check RACH config & PRACH root sequence', 'Review RRC congestion / admission control counters', 'Verify no cell barring or license capacity cap'] },
-        { match: n => n.includes('retain') || n.includes('drop') || n.includes('call'),
-          diagnosis: 'Call/session drop rate elevated',
-          actions: ['Check handover failure causes (HO out/in)', 'Review radio link failure (RLF) counters', 'Inspect neighbor list & X2/S1 handover config'] },
-        { match: n => n.includes('avail') || n.includes('valid'),
-          diagnosis: 'Cell availability degraded',
-          actions: ['Check for unplanned outages / VSWR alarms', 'Review transmission link (backhaul) status', 'Confirm no ongoing maintenance not logged as cutover'] },
-        { match: n => n.includes('cqi'),
-          diagnosis: 'Channel quality (CQI) degraded',
-          actions: ['Check for interference or overshooting cells', 'Review RF tilt / azimuth vs coverage plan', 'Inspect UE distribution vs cell edge coverage'] },
-        { match: n => n.includes('prb') || n.includes('util'),
-          diagnosis: 'PRB utilization / congestion high',
-          actions: ['Evaluate capacity expansion (carrier aggregation, new carrier)', 'Check load balancing between sectors/layers', 'Review traffic steering thresholds'] },
-        { match: n => n.includes('lat') || n.includes('delay') || n.includes('rtt'),
-          diagnosis: 'Latency/RTT above acceptable range',
-          actions: ['Check backhaul congestion / QoS marking', 'Review core network routing & S1-U path', 'Inspect scheduler config for delay-sensitive bearers'] },
-        { match: n => n.includes('interfer') || n.includes('noise'),
-          diagnosis: 'Interference / noise floor rising',
-          actions: ['Run interference scan / spectrum analysis', 'Check for PIM sources or external interferers', 'Review uplink power control settings'] },
-        { match: n => n.includes('throughput') || n.includes('tput') || n.includes('mbps') || n.includes('kbps') || n.includes('speed'),
-          diagnosis: 'Throughput below target',
-          actions: ['Check PRB utilization & CQI correlation', 'Verify MIMO rank / carrier aggregation status', 'Inspect backhaul capacity at the site'] },
-        { match: n => n.includes('rate') || n.includes('ratio') || n.includes('success') || n.includes('completion'),
-          diagnosis: 'Success/completion rate below target',
-          actions: ['Break down failure counters by cause code', 'Cross-check against correlated KPIs (retainability, accessibility, mobility)', 'Review recent config changes or cutover events near breach time'] },
-      ];
+      const matrix = KPI_RECOMMENDATION_MATRIX[category] || KPI_RECOMMENDATION_MATRIX.generic;
+      const rec = matrix[technology] || matrix['UNKNOWN'];
 
-      const hit = rules.find(r => r.match(name));
-      if (hit) {
-        return { level, diagnosis: hit.diagnosis, actions: hit.actions };
-      }
-      return { level, diagnosis: `${kpiName} outside configured threshold`, actions: ['Cross-check against correlated KPIs (traffic, availability, interference)', 'Review recent config changes or cutover events near breach time'] };
+      return { level, diagnosis: rec.diagnosis, actions: rec.actions, technology, category };
     }
 
     // Evaluates the last 3 data points of a single site/cell series against its KPI threshold.
     // Only bounds the user has actively turned on (showTarget/showWarning/showCritical) are checked —
     // previously this always checked warning/critical regardless of their toggle state, and ignored Target entirely.
     // Returns 'OK' or 'Under Threshold' plus the worst severity seen ('critical' | 'warning' | 'target' | null).
-    function evaluateLast3Days(ds, thresh, higherIsWorse, kpiName) {
+    // Small "[3G]"-style tag for a KPI's confirmed/detected technology, used anywhere a KPI name is
+    // displayed (audit table, heatmap) so it's always clear which generation a recommendation is for.
+    function getKpiTechTag(kpiName) {
+      const cfg = state.kpiThresholds[kpiName];
+      const tech = (cfg && cfg.technology) || detectTechnology(kpiName) || 'UNKNOWN';
+      return tech === 'UNKNOWN' ? '❔' : tech;
+    }
+
+    // Evaluates the last N days of a series against its KPI threshold (N = state.auditLookbackDays,
+    // configurable in the Step 3 audit panel — this used to be hardcoded to 3).
+    function evaluateRecentDays(ds, thresh, higherIsWorse, kpiName, lookbackDays) {
       const pts = (ds.data || []).filter(v => v !== null && v !== undefined && !isNaN(v));
-      const last3 = pts.slice(-3);
+      const days = Math.max(1, lookbackDays || 3);
+      const recent = pts.slice(-days);
 
       // No data at all in the recent window — the object likely isn't reporting (down, dropped from
       // the feed, transport/OSS connectivity issue, etc.), regardless of whether a threshold is set.
       // This is checked FIRST and separately from the threshold logic below.
-      if (last3.length === 0) {
+      if (recent.length === 0) {
         return { status: 'Not Reporting', severity: 'critical' };
       }
 
       // An Availability-type KPI sitting at (or essentially at) 0% across the recent window means the
       // site/cell is effectively down, even though it technically reported a value.
       const isAvailabilityKpi = (kpiName || '').toLowerCase().includes('avail');
-      if (isAvailabilityKpi && last3.every(v => Math.abs(v) < 0.01)) {
+      if (isAvailabilityKpi && recent.every(v => Math.abs(v) < 0.01)) {
         return { status: 'Not Reporting', severity: 'critical' };
       }
 
@@ -2720,7 +2954,7 @@
 
       let worst = null;
       const rank = { critical: 3, warning: 2, target: 1 };
-      last3.forEach(val => {
+      recent.forEach(val => {
         let hit = null;
         if (hasCritical && (higherIsWorse ? val > thresh.critical : val < thresh.critical)) hit = 'critical';
         else if (hasWarning && (higherIsWorse ? val > thresh.warning : val < thresh.warning)) hit = 'warning';
@@ -2767,6 +3001,7 @@
         return;
       }
 
+      const lookbackDays = state.auditLookbackDays || 3;
       const rows = []; // one row per site/cell object per KPI
       const sitesInReport = new Set();
 
@@ -2778,14 +3013,15 @@
         const kpi = cfg.kpi;
         const thresh = state.kpiThresholds[kpi] || { enable: false, target: 99, warning: 97, critical: 95, direction: 'lower_is_worse' };
         const higherIsWorse = thresh.direction === 'higher_is_worse';
+        const category = detectKpiCategory(kpi);
 
         chart.data.datasets.forEach(ds => {
-          const { status, severity } = evaluateLast3Days(ds, thresh, higherIsWorse, kpi);
+          const { status, severity } = evaluateRecentDays(ds, thresh, higherIsWorse, kpi, lookbackDays);
           const siteName = ds.siteName || ds.label;
           sitesInReport.add(siteName);
 
           let suggestion = 'KPI performing within nominal thresholds. No immediate action required.';
-          if (status === 'Not Reporting') suggestion = 'No data reported (or 0% availability) in the last 3 days — likely a full outage. Check site power, backhaul/transport link, and OSS/EMS connectivity.';
+          if (status === 'Not Reporting') suggestion = `No data reported (or 0% availability) in the last ${lookbackDays} day${lookbackDays === 1 ? '' : 's'} — likely a full outage. Check site power, backhaul/transport link, and OSS/EMS connectivity.`;
           else if (status === 'No Threshold Set') suggestion = 'No threshold configured for this KPI — set one in Step 2 to enable monitoring.';
           else if (status === 'Under Threshold') {
             const rec = getKpiRecommendation(kpi, severity);
@@ -2797,11 +3033,28 @@
 
           rows.push({
             objectLabel: ds.label, siteName, cellName: ds.cellName || null,
-            kpi, status, severity, suggestion, trend, noteKey,
+            kpi, status, severity, suggestion, trend, noteKey, category,
             note: state.auditNotes[noteKey] || ''
           });
         });
       });
+
+      // Site-wide outage override: if a site's Availability KPI shows 0%/no data (i.e. status is
+      // already 'Not Reporting'), treat every OTHER KPI for that same site/cell object as down too —
+      // during a real outage, any other KPI value for that object is effectively meaningless (stale or
+      // garbage data), not a legitimate "OK" reading.
+      const downObjects = new Set(
+        rows.filter(r => r.category === 'avail' && r.status === 'Not Reporting').map(r => r.objectLabel)
+      );
+      if (downObjects.size > 0) {
+        rows.forEach(r => {
+          if (downObjects.has(r.objectLabel) && r.status !== 'Not Reporting') {
+            r.status = 'Not Reporting';
+            r.severity = 'critical';
+            r.suggestion = `Site/cell shows 0% availability (full outage) — this KPI's reading is not reliable while the site is down. Check site power, backhaul/transport link, and OSS/EMS connectivity.`;
+          }
+        });
+      }
 
       // cache for export and for the site filter dropdown
       state.lastAuditReport = rows;
@@ -2885,7 +3138,7 @@
       const bodyRows = rows.map(r => `
         <tr class="audit-report-row border-b border-slate-800/60 hover:bg-slate-900/40" data-site="${r.siteName}">
           <td class="py-2.5 px-3 font-mono font-bold text-pink-300 text-xs whitespace-nowrap">${r.objectLabel}</td>
-          <td class="py-2.5 px-3 font-mono text-amber-300 text-xs whitespace-nowrap">${r.kpi}</td>
+          <td class="py-2.5 px-3 font-mono text-amber-300 text-xs whitespace-nowrap">${r.kpi} <span class="text-[9px] px-1 py-0.5 rounded border ${getKpiTechTag(r.kpi) === '❔' ? 'border-amber-600 text-amber-500' : 'border-cyan-700 text-cyan-400'}">${getKpiTechTag(r.kpi)}</span></td>
           <td class="py-2.5 px-3">${statusBadge(r.status)}</td>
           <td class="py-2.5 px-3 whitespace-nowrap">${trendBadge(r.trend)}</td>
           <td class="py-2.5 px-3 text-slate-300 text-[11px] leading-snug">${r.suggestion}</td>
@@ -2901,7 +3154,7 @@
             <span class="text-base">🎯</span>
             <div>
               <h3 class="font-black text-white text-sm">Plotted Site / Cell Health Audit Table</h3>
-              <p class="text-[11px] text-slate-400">Evaluates threshold compliance over the past 3 days for active charts, flags long-range trend direction, and provides corrective optimization actions.</p>
+              <p class="text-[11px] text-slate-400">Evaluates threshold compliance over the past ${state.auditLookbackDays || 3} day${(state.auditLookbackDays || 3) === 1 ? '' : 's'} for active charts, flags long-range trend direction, and provides corrective optimization actions.</p>
             </div>
           </div>
         </div>
@@ -2913,7 +3166,7 @@
                 <tr class="border-b border-slate-700 text-[10px] text-slate-400 uppercase font-mono">
                   <th class="py-2 px-3">Site / Cell Object</th>
                   <th class="py-2 px-3">KPI Metric</th>
-                  <th class="py-2 px-3">Status (Past 3 Days)</th>
+                  <th class="py-2 px-3">Status (Past ${state.auditLookbackDays || 3} Day${(state.auditLookbackDays || 3) === 1 ? '' : 's'})</th>
                   <th class="py-2 px-3">Trend (Full Range)</th>
                   <th class="py-2 px-3">Optimization Suggestion / Action Plan</th>
                   <th class="py-2 px-3">Notes</th>
@@ -2948,7 +3201,7 @@
         'Site': r.siteName,
         'Cell': r.cellName || '',
         'KPI Metric': r.kpi,
-        'Status (Past 3 Days)': r.status,
+        [`Status (Past ${state.auditLookbackDays || 3} Day${(state.auditLookbackDays || 3) === 1 ? '' : 's'})`]: r.status,
         'Trend (Full Range)': r.trend ? r.trend.charAt(0).toUpperCase() + r.trend.slice(1) : 'N/A',
         'Optimization Suggestion / Action Plan': r.suggestion,
         'Notes': r.note || ''
@@ -3000,7 +3253,7 @@
       breaches.forEach(r => { bySite[r.siteName] = (bySite[r.siteName] || 0) + 1; });
       const topSites = Object.entries(bySite).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
-      let text = `Across ${total} plotted site/cell × KPI combination${total === 1 ? '' : 's'}, ${ok.length} (${healthPct}%) are currently within threshold and ${breaches.length} ${breaches.length === 1 ? 'is' : 'are'} in breach over the last 3 days.`;
+      let text = `Across ${total} plotted site/cell × KPI combination${total === 1 ? '' : 's'}, ${ok.length} (${healthPct}%) are currently within threshold and ${breaches.length} ${breaches.length === 1 ? 'is' : 'are'} in breach over the last ${state.auditLookbackDays || 3} day${(state.auditLookbackDays || 3) === 1 ? '' : 's'}.`;
 
       if (notReporting.length > 0) {
         const notReportingObjects = Array.from(new Set(notReporting.map(r => r.objectLabel)));
@@ -3333,7 +3586,7 @@
         <table class="border-collapse text-[10px] font-mono">
           <thead><tr>
             <th class="sticky left-0 bg-slate-950 px-2 py-1 text-slate-400 text-left">Object</th>
-            ${kpis.map(k => `<th class="px-1.5 py-1 text-slate-400 whitespace-nowrap" title="${k}">${k.length > 14 ? k.slice(0, 14) + '…' : k}</th>`).join('')}
+            ${kpis.map(k => `<th class="px-1.5 py-1 text-slate-400 whitespace-nowrap" title="${k} [${getKpiTechTag(k)}]">${k.length > 14 ? k.slice(0, 14) + '…' : k} <span class="text-[9px] ${getKpiTechTag(k) === '❔' ? 'text-amber-500' : 'text-cyan-400'}">${getKpiTechTag(k)}</span></th>`).join('')}
           </tr></thead>
           <tbody>
             ${objects.map(obj => `
