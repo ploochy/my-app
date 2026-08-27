@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+a<!DOCTYPE html>
 <html lang="en">
 <head>
   <link rel="icon" type="image/png" href="favicon.png">
@@ -733,8 +733,12 @@
                   <span id="readinessSiteFilterLabel">All Sites</span>
                   <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </button>
-                <div id="readinessSiteFilterMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-full bg-slate-950 border border-emerald-500/50 rounded-xl p-2 max-h-60 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                <div id="readinessSiteFilterMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-full bg-slate-950 border border-emerald-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
                   <input type="text" id="readinessSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('readinessSiteFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-emerald-500 focus:outline-none font-mono mb-2">
+                  <div class="flex items-center gap-2 mb-1.5 border-b border-slate-800 pb-1.5">
+                    <button onclick="event.stopPropagation(); setReadinessSiteSelection('ALL')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-emerald-300 rounded font-bold">Select All</button>
+                    <button onclick="event.stopPropagation(); setReadinessSiteSelection('NONE')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 rounded font-bold">Clear All</button>
+                  </div>
                   <div id="readinessSiteFilterList" class="space-y-0.5 text-xs"></div>
                 </div>
               </div>
@@ -770,6 +774,76 @@
           <div id="siteReadinessContainer" class="text-xs text-slate-500 font-mono italic">
             Import dataset in Step 1 and click 'Run Readiness Check' above to verify site acceptance status.
           </div>
+        </div>
+      </div>
+
+      <!-- BAD KPI ANALYSIS BY SITE -->
+      <div class="glass-card p-5 space-y-3 border border-rose-500/25" id="analysis-bad-kpis">
+        <div class="flex items-center justify-between gap-3 flex-wrap border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🚨</span>
+            <div>
+              <h3 class="font-black text-white text-sm">Bad KPI Analysis by Site</h3>
+              <p class="text-[11px] text-slate-400">Select one or more sites and KPIs to quickly identify the KPIs that failed during the required consecutive-day period.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="generateBadKpiAnalysis()" class="px-4 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-black rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5">
+              <span>🔎</span> Analyze Bad KPIs
+            </button>
+            <button onclick="exportBadKpiAnalysisExcel()" title="Export the latest Bad KPI Analysis result as Excel" class="px-3 py-2 bg-slate-950 border border-slate-800 hover:border-rose-500 text-slate-300 hover:text-rose-300 font-bold rounded-xl transition-all text-xs flex items-center gap-1.5">
+              📊 Export Excel
+            </button>
+            <button onclick="toggleAnalysisSection('badKpiAnalysisBody', 'badKpiAnalysisToggle')" id="badKpiAnalysisToggle" class="px-3 py-2 bg-slate-950 border border-slate-800 hover:border-rose-500 text-slate-300 hover:text-rose-300 font-bold rounded-xl transition-all text-xs">
+              ▲ Collapse
+            </button>
+          </div>
+        </div>
+
+        <div id="badKpiAnalysisBody" class="space-y-3">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+            <div>
+              <label class="block text-[11px] font-bold text-rose-400 mb-1">Select Site / Object:</label>
+              <div class="custom-dropdown-container" id="badKpiSiteFilterContainer">
+                <button onclick="toggleDropdown('badKpiSiteFilterMenu', event)" id="badKpiSiteFilterBtn" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 hover:border-rose-500 text-slate-200 rounded-lg text-xs font-mono flex items-center justify-between">
+                  <span id="badKpiSiteFilterLabel">Select Sites...</span>
+                  <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="badKpiSiteFilterMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-full bg-slate-950 border border-rose-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                  <input type="text" id="badKpiSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('badKpiSiteFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-rose-500 focus:outline-none font-mono mb-2">
+                  <div class="flex items-center gap-2 mb-1.5 border-b border-slate-800 pb-1.5">
+                    <button onclick="event.stopPropagation(); setBadKpiSiteSelection('ALL')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-rose-300 rounded font-bold">Select All</button>
+                    <button onclick="event.stopPropagation(); setBadKpiSiteSelection('NONE')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 rounded font-bold">Clear All</button>
+                  </div>
+                  <div id="badKpiSiteFilterList" class="space-y-0.5 text-xs"></div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-rose-400 mb-1">Required Consecutive Days:</label>
+              <input type="number" id="badKpiDaysInput" value="7" min="1" max="90" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-rose-500 focus:outline-none">
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-rose-400 mb-1">Select KPIs to Analyze:</label>
+              <div class="custom-dropdown-container" id="badKpiFilterContainer">
+                <button onclick="toggleDropdown('badKpiFilterMenu', event)" id="badKpiFilterBtn" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 hover:border-rose-500 text-slate-200 rounded-lg text-xs font-mono flex items-center justify-between">
+                  <span id="badKpiFilterLabel">All Metrics</span>
+                  <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="badKpiFilterMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-72 bg-slate-950 border border-rose-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+                  <input type="text" id="badKpiFilterSearch" placeholder="🔍 Search KPI..." onkeyup="filterDropdownItems('badKpiFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-rose-500 focus:outline-none font-mono mb-2">
+                  <div class="flex items-center gap-2 mb-1.5 border-b border-slate-800 pb-1.5">
+                    <button onclick="event.stopPropagation(); setBadKpiSelection('ALL')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-rose-300 rounded font-bold">Select All</button>
+                    <button onclick="event.stopPropagation(); setBadKpiSelection('NONE')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 rounded font-bold">Clear All</button>
+                  </div>
+                  <div id="badKpiFilterList" class="space-y-1 text-xs"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="badKpiAnalysisContainer" class="text-xs text-slate-500 font-mono italic">Select sites and KPIs, choose the required consecutive-day period, then run the analysis.</div>
         </div>
       </div>
 
@@ -817,8 +891,12 @@
                 <span id="heatmapSiteFilterLabel">All Sites</span>
                 <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
               </button>
-              <div id="heatmapSiteFilterMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-60 bg-slate-950 border border-amber-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+              <div id="heatmapSiteFilterMenu" class="custom-dropdown-menu hidden absolute right-0 mt-2 w-72 bg-slate-950 border border-amber-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
                 <input type="text" id="heatmapSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('heatmapSiteFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-amber-500 focus:outline-none font-mono mb-2">
+                <div class="flex items-center gap-2 mb-1.5 border-b border-slate-800 pb-1.5">
+                  <button onclick="event.stopPropagation(); setHeatmapSiteSelection('ALL')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-amber-300 rounded font-bold">Select All</button>
+                  <button onclick="event.stopPropagation(); setHeatmapSiteSelection('NONE')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 rounded font-bold">Clear All</button>
+                </div>
                 <div id="heatmapSiteFilterList" class="space-y-0.5 text-[11px]"></div>
               </div>
             </div>
@@ -844,7 +922,7 @@
             <span class="text-base">🎛️</span>
             <div>
               <h3 class="font-black text-white text-sm">Multi-KPI Overlay Chart</h3>
-              <p class="text-[11px] text-slate-400">Overlay two KPIs for one site on a single chart (dual Y-axis) to eyeball correlation visually.</p>
+              <p class="text-[11px] text-slate-400">Overlay two KPIs across one or more selected sites on a single chart (dual Y-axis) to eyeball correlation visually.</p>
             </div>
           </div>
           <button onclick="toggleAnalysisSection('overlayChartBody', 'overlayChartToggle')" id="overlayChartToggle" class="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-violet-300 border border-slate-700 rounded-lg font-bold text-[11px] transition-all whitespace-nowrap">
@@ -853,9 +931,20 @@
         </div>
         <div id="overlayChartBody" class="space-y-3">
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <select id="overlaySiteSelect" class="px-2.5 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-violet-500">
-              <option value="">Select Site...</option>
-            </select>
+            <div class="custom-dropdown-container relative">
+              <button onclick="toggleDropdown('overlaySiteMenu', event)" id="overlaySiteBtn" class="w-full px-2.5 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-violet-500 flex items-center justify-between">
+                <span id="overlaySiteLabel">Select Sites...</span>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="overlaySiteMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-full bg-slate-950 border border-violet-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar z-20" onclick="event.stopPropagation()">
+                <input type="text" id="overlaySiteSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('overlaySiteList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-violet-500 focus:outline-none font-mono mb-2">
+                <div class="flex items-center gap-2 mb-1.5 border-b border-slate-800 pb-1.5">
+                  <button onclick="event.stopPropagation(); setOverlaySiteSelection('ALL')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-violet-300 rounded font-bold">Select All</button>
+                  <button onclick="event.stopPropagation(); setOverlaySiteSelection('NONE')" class="text-[10px] px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 rounded font-bold">Clear All</button>
+                </div>
+                <div id="overlaySiteList" class="space-y-0.5 text-xs"></div>
+              </div>
+            </div>
             <select id="overlayKpiASelect" class="px-2.5 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-violet-500">
               <option value="">Select KPI A...</option>
             </select>
@@ -943,9 +1032,20 @@
 
       // Site Readiness state additions
       readinessSiteFilter: 'ALL',
+      readinessSelectedSites: null,
       readinessSelectedKpis: null,
       lastReadinessResults: [],
-      lastReadinessMeta: null
+      lastReadinessMeta: null,
+
+      // Bad KPI Analysis state
+      badKpiSelectedSites: null,
+      badKpiSelectedKpis: null,
+      badKpiResults: [],
+      badKpiMeta: null,
+
+      // Multi-site reporting selectors
+      heatmapSelectedSites: null,
+      overlaySelectedSites: []
     };
 
     // Close Dropdowns on Click Outside
@@ -2641,9 +2741,10 @@
       }
 
       populateReadinessDropdowns();
+      populateBadKpiSelectors();
 
       const lookbackDays = parseInt(document.getElementById('readinessDaysInput').value, 10) || 7;
-      const targetSite = state.readinessSiteFilter || 'ALL';
+      const selectedSites = state.readinessSelectedSites === null ? [...state.sites] : [...(state.readinessSelectedSites || [])];
       const selectedKpis = state.readinessSelectedKpis && state.readinessSelectedKpis.length > 0
                             ? state.readinessSelectedKpis
                             : state.kpiColumns;
@@ -2654,8 +2755,14 @@
         state.lastReadinessMeta = null;
         return;
       }
+      if (selectedSites.length === 0) {
+        container.innerHTML = `<div class="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-amber-300 font-mono text-xs">⚠️ Select at least one site for the readiness check.</div>`;
+        state.lastReadinessResults = [];
+        state.lastReadinessMeta = null;
+        return;
+      }
 
-      const sitesToEvaluate = targetSite === 'ALL' ? state.sites : [targetSite];
+      const sitesToEvaluate = selectedSites;
       const timeCol = state.dateKey;
       const allTimestamps = Array.from(new Set(state.dataset.map(d => d[timeCol]))).sort();
       const evalTimestamps = allTimestamps.slice(-lookbackDays);
@@ -2721,7 +2828,7 @@
         lookbackDays: lookbackDays,
         evaluatedDays: evalTimestamps.length,
         requestedDays: lookbackDays,
-        siteFilter: targetSite,
+        siteFilter: selectedSites.length === state.sites.length ? 'ALL' : [...selectedSites],
         selectedKpis: [...selectedKpis],
         timestamps: [...evalTimestamps]
       };
@@ -2804,81 +2911,322 @@
       }
 
       const meta = state.lastReadinessMeta || {};
-      const exportRows = [];
 
+      // SUMMARY SHEET — one row per site, with the final verdict in a single column. This is the sheet
+      // you'd hand to a customer/stakeholder: no need to scan multiple KPI rows to find the verdict.
+      const summaryRows = state.lastReadinessResults.map(result => {
+        const totalKpis = result.kpiEvaluations.length;
+        const passedKpis = result.kpiEvaluations.filter(k => k.isOk).length;
+        const failedKpiNames = result.kpiEvaluations.filter(k => !k.isOk).map(k => k.kpi);
+        return {
+          'Site / Object': result.site,
+          'Final Verdict': result.isReady ? 'READY FOR ACCEPTANCE' : 'NOT READY',
+          'KPIs Passed': `${passedKpis} / ${totalKpis}`,
+          'Failed KPIs': failedKpiNames.length > 0 ? failedKpiNames.join(', ') : '—',
+          'Requested Period (Days)': meta.requestedDays ?? '',
+          'Evaluated Days': meta.evaluatedDays ?? ''
+        };
+      });
+
+      // DETAIL SHEET — one row per site × KPI, for anyone who wants the full breakdown.
+      const detailRows = [];
       state.lastReadinessResults.forEach(result => {
         result.kpiEvaluations.forEach(k => {
-          exportRows.push({
+          detailRows.push({
             'Site / Object': result.site,
             'KPI Metric': k.kpi,
             'Required Target': k.targetVal,
             'Failed Days': k.failedDays,
             'KPI Status': k.isOk ? 'PASS' : 'FAIL',
-            'Final Site Status': result.isReady ? 'PASS' : 'FAIL',
+            'Final Site Verdict': result.isReady ? 'READY FOR ACCEPTANCE' : 'NOT READY',
             'Requested Period (Days)': meta.requestedDays ?? '',
             'Evaluated Days': meta.evaluatedDays ?? ''
           });
         });
       });
 
-      if (exportRows.length === 0) {
-        return alert('No Site Readiness results available to export.');
-      }
+      const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
+      summaryWs['!cols'] = [{ wch: 22 }, { wch: 20 }, { wch: 14 }, { wch: 40 }, { wch: 22 }, { wch: 16 }];
 
-      const ws = XLSX.utils.json_to_sheet(exportRows);
-      ws['!cols'] = [
-        { wch: 22 }, { wch: 36 }, { wch: 18 }, { wch: 12 },
-        { wch: 14 }, { wch: 18 }, { wch: 24 }, { wch: 16 }
-      ];
+      const detailWs = XLSX.utils.json_to_sheet(detailRows);
+      detailWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 22 }, { wch: 16 }];
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Site Readiness');
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Readiness Summary');
+      XLSX.utils.book_append_sheet(wb, detailWs, 'KPI Detail');
       XLSX.writeFile(wb, `PlootchyNet_Site_Readiness_${Date.now()}.xlsx`);
     }
 
-    function populateReadinessDropdowns() {
-      // Site Dropdown
-      const siteListContainer = document.getElementById('readinessSiteFilterList');
-      if (siteListContainer && siteListContainer.children.length === 0) {
-        siteListContainer.innerHTML = `
-          <div data-search="all sites" onclick="selectReadinessSite('ALL')" class="p-1.5 hover:bg-slate-900 rounded cursor-pointer text-emerald-300 font-bold">
-            All Sites
-          </div>
-        ` + state.sites.map(s => `
-          <div data-search="${s.toLowerCase()}" onclick="selectReadinessSite('${s}')" class="p-1.5 hover:bg-slate-900 rounded cursor-pointer text-slate-200">
-            ${s}
-          </div>
-        `).join('');
+    // "Each site with a list of the degraded KPIs" — one row per site, degraded KPIs listed together
+    // (with their failed-day counts), plus a detail sheet for anyone who wants the full breakdown.
+    function exportBadKpiAnalysisExcel() {
+      if (!state.badKpiResults || state.badKpiResults.length === 0) {
+        return alert('Run "Analyze Bad KPIs" before exporting.');
       }
 
-      // KPI Dropdown
+      const meta = state.badKpiMeta || {};
+
+      const summaryRows = state.badKpiResults.map(r => ({
+        'Site / Object': r.site,
+        'Status': r.status,
+        'Degraded KPI Count': r.badKpis.length,
+        'Degraded KPIs': r.badKpis.length > 0
+          ? r.badKpis.map(k => `${k.kpi} (${k.failedPeriod} days, target: ${k.targetVal})`).join('; ')
+          : '—',
+        'Requested Period (Days)': meta.requestedDays ?? '',
+        'Evaluated Days': meta.evaluatedDays ?? ''
+      }));
+
+      const detailRows = [];
+      state.badKpiResults.forEach(r => {
+        if (r.badKpis.length === 0) return;
+        r.badKpis.forEach(k => {
+          detailRows.push({
+            'Site / Object': r.site,
+            'Degraded KPI': k.kpi,
+            'Issue': k.issue,
+            'Required Target': k.targetVal,
+            'Failed Days': k.failedDays,
+            'Failed / Evaluated Period': k.failedPeriod,
+            'Requested Period (Days)': meta.requestedDays ?? '',
+            'Evaluated Days': meta.evaluatedDays ?? ''
+          });
+        });
+      });
+
+      const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
+      summaryWs['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 60 }, { wch: 22 }, { wch: 16 }];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Bad KPIs by Site');
+
+      if (detailRows.length > 0) {
+        const detailWs = XLSX.utils.json_to_sheet(detailRows);
+        detailWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 30 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 22 }, { wch: 16 }];
+        XLSX.utils.book_append_sheet(wb, detailWs, 'Degraded KPI Detail');
+      }
+
+      XLSX.writeFile(wb, `PlootchyNet_Bad_KPI_Analysis_${Date.now()}.xlsx`);
+    }
+
+    function updateReadinessSiteLabel() {
+      const label = document.getElementById('readinessSiteFilterLabel');
+      if (!label) return;
+      const selected = state.readinessSelectedSites;
+      if (selected === null) label.innerText = 'All Sites';
+      else if (selected.length === 0) label.innerText = 'No Sites Selected';
+      else if (selected.length === 1) label.innerText = selected[0];
+      else label.innerText = `${selected.length} Sites Selected`;
+    }
+
+    function populateReadinessDropdowns() {
+      const siteListContainer = document.getElementById('readinessSiteFilterList');
+      if (siteListContainer) {
+        siteListContainer.innerHTML = state.sites.map(s => `
+          <label data-search="${String(s).toLowerCase()}" class="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer">
+            <input type="checkbox" value="${String(s).replace(/"/g, '&quot;')}" ${state.readinessSelectedSites === null || state.readinessSelectedSites.includes(s) ? 'checked' : ''} onchange="toggleReadinessSite(this.value, this.checked)" class="readiness-site-cb rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0">
+            <span class="text-slate-200 font-mono">${s}</span>
+          </label>
+        `).join('');
+        updateReadinessSiteLabel();
+      }
+
       const kpiListContainer = document.getElementById('readinessKpiFilterList');
-      if (kpiListContainer && kpiListContainer.children.length === 0) {
+      if (kpiListContainer) {
         kpiListContainer.innerHTML = state.kpiColumns.map(kpi => `
           <label data-search="${kpi.toLowerCase()}" class="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer">
-            <input type="checkbox" value="${kpi}" checked onchange="onReadinessKpiToggle('${kpi}')" class="readiness-kpi-cb rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0">
+            <input type="checkbox" value="${String(kpi).replace(/"/g, '&quot;')}" ${!state.readinessSelectedKpis || state.readinessSelectedKpis.includes(kpi) ? 'checked' : ''} onchange="onReadinessKpiToggle('${String(kpi).replace(/'/g, "\\'")}')" class="readiness-kpi-cb rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0">
             <span class="text-slate-200 font-mono">${kpi}</span>
           </label>
         `).join('');
       }
     }
 
-    function selectReadinessSite(site) {
-      state.readinessSiteFilter = site;
-      document.getElementById('readinessSiteFilterLabel').innerText = site === 'ALL' ? 'All Sites' : site;
-      toggleDropdown('readinessSiteFilterMenu');
-      generateSiteReadinessReport();
+    function toggleReadinessSite(site, checked) {
+      const current = state.readinessSelectedSites === null ? [...state.sites] : [...state.readinessSelectedSites];
+      const idx = current.indexOf(site);
+      if (checked && idx === -1) current.push(site);
+      if (!checked && idx !== -1) current.splice(idx, 1);
+      state.readinessSelectedSites = current.length === state.sites.length ? null : current;
+      updateReadinessSiteLabel();
     }
 
-    function onReadinessKpiToggle(kpi) {
+    function setReadinessSiteSelection(mode) {
+      state.readinessSelectedSites = mode === 'ALL' ? null : [];
+      document.querySelectorAll('.readiness-site-cb').forEach(cb => cb.checked = mode === 'ALL');
+      updateReadinessSiteLabel();
+      if (mode === 'ALL' || mode === 'NONE') generateSiteReadinessReport();
+    }
+
+    // Backward-compatible single-site handler.
+    function selectReadinessSite(site) {
+      if (site === 'ALL') setReadinessSiteSelection('ALL');
+      else {
+        state.readinessSelectedSites = [site];
+        document.querySelectorAll('.readiness-site-cb').forEach(cb => cb.checked = cb.value === site);
+        updateReadinessSiteLabel();
+        generateSiteReadinessReport();
+      }
+    }
+
+    function onReadinessKpiToggle() {
       const cbs = Array.from(document.querySelectorAll('.readiness-kpi-cb:checked')).map(c => c.value);
       state.readinessSelectedKpis = cbs;
-      document.getElementById('readinessKpiFilterLabel').innerText = cbs.length === state.kpiColumns.length ? 'All Metrics' : `${cbs.length} KPIs Selected`;
+      const label = document.getElementById('readinessKpiFilterLabel');
+      if (label) label.innerText = cbs.length === state.kpiColumns.length ? 'All Metrics' : `${cbs.length} KPIs Selected`;
     }
 
     function setReadinessKpiSelection(mode) {
       document.querySelectorAll('.readiness-kpi-cb').forEach(cb => cb.checked = (mode === 'ALL'));
       onReadinessKpiToggle();
+    }
+
+    function updateBadKpiSiteLabel() {
+      const label = document.getElementById('badKpiSiteFilterLabel');
+      if (!label) return;
+      const selected = state.badKpiSelectedSites || [];
+      label.innerText = selected.length === 0 ? 'Select Sites...' : selected.length === 1 ? selected[0] : `${selected.length} Sites Selected`;
+    }
+
+    function populateBadKpiSelectors() {
+      const siteList = document.getElementById('badKpiSiteFilterList');
+      if (siteList) {
+        siteList.innerHTML = state.sites.map(s => `
+          <label data-search="${String(s).toLowerCase()}" class="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer">
+            <input type="checkbox" value="${String(s).replace(/"/g, '&quot;')}" ${state.badKpiSelectedSites && state.badKpiSelectedSites.includes(s) ? 'checked' : ''} onchange="toggleBadKpiSite(this.value, this.checked)" class="bad-kpi-site-cb rounded bg-slate-900 border-slate-700 text-rose-500 focus:ring-0">
+            <span class="text-slate-200 font-mono">${s}</span>
+          </label>
+        `).join('');
+        updateBadKpiSiteLabel();
+      }
+
+      const kpiList = document.getElementById('badKpiFilterList');
+      if (kpiList) {
+        kpiList.innerHTML = state.kpiColumns.map(kpi => `
+          <label data-search="${String(kpi).toLowerCase()}" class="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer">
+            <input type="checkbox" value="${String(kpi).replace(/"/g, '&quot;')}" ${!state.badKpiSelectedKpis || state.badKpiSelectedKpis.includes(kpi) ? 'checked' : ''} onchange="toggleBadKpiKpi(this.value, this.checked)" class="bad-kpi-cb rounded bg-slate-900 border-slate-700 text-rose-500 focus:ring-0">
+            <span class="text-slate-200 font-mono">${kpi}</span>
+          </label>
+        `).join('');
+        updateBadKpiKpiLabel();
+      }
+    }
+
+    function toggleBadKpiSite(site, checked) {
+      const current = [...(state.badKpiSelectedSites || [])];
+      const idx = current.indexOf(site);
+      if (checked && idx === -1) current.push(site);
+      if (!checked && idx !== -1) current.splice(idx, 1);
+      state.badKpiSelectedSites = current;
+      updateBadKpiSiteLabel();
+    }
+
+    function setBadKpiSiteSelection(mode) {
+      state.badKpiSelectedSites = mode === 'ALL' ? [...state.sites] : [];
+      document.querySelectorAll('.bad-kpi-site-cb').forEach(cb => cb.checked = mode === 'ALL');
+      updateBadKpiSiteLabel();
+    }
+
+    function updateBadKpiKpiLabel() {
+      const label = document.getElementById('badKpiFilterLabel');
+      if (!label) return;
+      const selected = state.badKpiSelectedKpis;
+      if (!selected || selected.length === state.kpiColumns.length) label.innerText = 'All Metrics';
+      else label.innerText = selected.length === 0 ? 'No KPIs Selected' : `${selected.length} KPIs Selected`;
+    }
+
+    function toggleBadKpiKpi(kpi, checked) {
+      const current = state.badKpiSelectedKpis === null ? [...state.kpiColumns] : [...(state.badKpiSelectedKpis || [])];
+      const idx = current.indexOf(kpi);
+      if (checked && idx === -1) current.push(kpi);
+      if (!checked && idx !== -1) current.splice(idx, 1);
+      state.badKpiSelectedKpis = current.length === state.kpiColumns.length ? null : current;
+      updateBadKpiKpiLabel();
+    }
+
+    function setBadKpiSelection(mode) {
+      state.badKpiSelectedKpis = mode === 'ALL' ? null : [];
+      document.querySelectorAll('.bad-kpi-cb').forEach(cb => cb.checked = mode === 'ALL');
+      updateBadKpiKpiLabel();
+    }
+
+    function getBadKpiIssueLabel(kpi, direction) {
+      const clean = String(kpi).replace(/_FDDTD?D?/gi, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+      return `${direction === 'higher_is_worse' ? 'High' : 'Low'} ${clean}`;
+    }
+
+    function generateBadKpiAnalysis() {
+      const container = document.getElementById('badKpiAnalysisContainer');
+      if (!state.dataset || state.dataset.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 font-mono italic">Import dataset in Step 1 before running the bad KPI analysis.</div>`;
+        return;
+      }
+
+      populateBadKpiSelectors();
+      const selectedSites = state.badKpiSelectedSites || [];
+      const selectedKpis = state.badKpiSelectedKpis === null ? state.kpiColumns : (state.badKpiSelectedKpis || []);
+      const lookbackDays = parseInt(document.getElementById('badKpiDaysInput').value, 10) || 7;
+
+      if (selectedSites.length === 0) return void (container.innerHTML = `<div class="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-amber-300 font-mono text-xs">⚠️ Select at least one site.</div>`);
+      if (selectedKpis.length === 0) return void (container.innerHTML = `<div class="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-amber-300 font-mono text-xs">⚠️ Select at least one KPI.</div>`);
+
+      const timeCol = state.dateKey;
+      const allTimestamps = Array.from(new Set(state.dataset.map(d => d[timeCol]))).sort();
+      const evalTimestamps = allTimestamps.slice(-lookbackDays);
+      const results = [];
+
+      selectedSites.forEach(site => {
+        const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
+        const badKpis = [];
+
+        selectedKpis.forEach(kpi => {
+          const thresh = state.kpiThresholds[kpi] || {};
+          const direction = thresh.direction || 'lower_is_worse';
+          const hasTarget = thresh.target !== undefined && thresh.target !== null && !Number.isNaN(Number(thresh.target));
+          const targetVal = hasTarget ? Number(thresh.target) : null;
+          let failedDays = 0;
+
+          evalTimestamps.forEach(ts => {
+            const vals = siteRows.filter(d => d[timeCol] === ts).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
+            if (vals.length === 0 || !hasTarget) { failedDays++; return; }
+            const dayAvg = vals.reduce((a,b) => a+b, 0) / vals.length;
+            if (direction === 'higher_is_worse' ? dayAvg > targetVal : dayAvg < targetVal) failedDays++;
+          });
+
+          if (failedDays > 0) {
+            badKpis.push({
+              kpi,
+              issue: getBadKpiIssueLabel(kpi, direction),
+              targetVal: hasTarget ? targetVal : 'Not Set',
+              failedDays,
+              failedPeriod: `${failedDays}/${evalTimestamps.length}`
+            });
+          }
+        });
+
+        results.push({ site, badKpis, status: badKpis.length > 0 ? 'ISSUES FOUND' : 'ALL SELECTED KPIs OK' });
+      });
+
+      state.badKpiResults = results;
+      state.badKpiMeta = { requestedDays: lookbackDays, evaluatedDays: evalTimestamps.length, selectedSites: [...selectedSites], selectedKpis: [...selectedKpis], timestamps: [...evalTimestamps] };
+
+      const warning = evalTimestamps.length < lookbackDays ? `<div class="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-amber-300 font-mono text-xs">⚠️ Dataset contains ${evalTimestamps.length} unique timestamps; ${lookbackDays} requested. Analysis uses the available timestamps.</div>` : '';
+      container.innerHTML = `
+        <div class="space-y-3">
+          ${warning}
+          ${results.map(r => `
+            <div class="p-3 bg-slate-950/80 border ${r.badKpis.length ? 'border-rose-500/40' : 'border-emerald-500/30'} rounded-xl">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-black text-white font-mono">🏢 ${r.site}</span>
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-black ${r.badKpis.length ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}">${r.status}</span>
+              </div>
+              <div class="mt-2 text-sm font-mono leading-relaxed">
+                ${r.badKpis.length ? r.badKpis.map(k => `<span class="inline-flex items-center gap-1 mr-2 mb-1 px-2 py-1 rounded-lg bg-rose-950/70 border border-rose-800/70 text-rose-300"><span>🔴</span><span class="font-bold">${k.issue}</span><span class="text-rose-400/80">(${k.failedDays} failed day${k.failedDays === 1 ? '' : 's'}, target: ${k.targetVal})</span></span>`).join('') : '<span class="text-emerald-400 font-bold">🟢 No selected KPI failed during the required period.</span>'}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
     }
 
     function generateCutoverComparison() {
@@ -2979,13 +3327,22 @@
       const activeKpis = Array.from(new Set(Object.values(state.chartLocalConfigs).map(c => c.kpi)));
 
       const siteListContainer = document.getElementById('heatmapSiteFilterList');
-      if (siteListContainer && siteListContainer.children.length === 0) {
-        siteListContainer.innerHTML = `<div data-search="all sites" onclick="selectHeatmapSite('ALL')" class="p-1.5 hover:bg-slate-900 rounded cursor-pointer text-amber-300 font-bold">All Sites</div>` + state.sites.map(s => `
-          <div data-search="${s.toLowerCase()}" onclick="selectHeatmapSite('${s}')" class="p-1.5 hover:bg-slate-900 rounded cursor-pointer text-slate-200">${s}</div>
+      if (siteListContainer) {
+        siteListContainer.innerHTML = state.sites.map(s => `
+          <label data-search="${String(s).toLowerCase()}" class="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer">
+            <input type="checkbox" value="${String(s).replace(/"/g, '&quot;')}" ${state.heatmapSelectedSites === null || state.heatmapSelectedSites.includes(s) ? 'checked' : ''} onchange="toggleHeatmapSite(this.value, this.checked)" class="heatmap-site-cb rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-0">
+            <span class="text-slate-200 font-mono">${s}</span>
+          </label>
         `).join('');
+        updateHeatmapSiteLabel();
       }
 
-      const targetSites = state.heatmapSiteFilter === 'ALL' ? state.sites : [state.heatmapSiteFilter];
+      const targetSites = state.heatmapSelectedSites === null ? state.sites : (state.heatmapSelectedSites || []);
+
+      if (targetSites.length === 0) {
+        el.innerHTML = `<div class="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-amber-300 font-mono text-xs">⚠️ Select at least one site to display the heatmap.</div>`;
+        return;
+      }
 
       let html = `
         <div class="overflow-x-auto rounded-xl border border-slate-800">
@@ -3049,89 +3406,130 @@
       el.innerHTML = html;
     }
 
-    function selectHeatmapSite(site) {
-      state.heatmapSiteFilter = site;
-      document.getElementById('heatmapSiteFilterLabel').innerText = site === 'ALL' ? 'All Sites' : site;
-      toggleDropdown('heatmapSiteFilterMenu');
+    function updateHeatmapSiteLabel() {
+      const label = document.getElementById('heatmapSiteFilterLabel');
+      if (!label) return;
+      const selected = state.heatmapSelectedSites;
+      if (selected === null) label.innerText = 'All Sites';
+      else if (!selected.length) label.innerText = 'No Sites Selected';
+      else if (selected.length === 1) label.innerText = selected[0];
+      else label.innerText = `${selected.length} Sites Selected`;
+    }
+
+    function toggleHeatmapSite(site, checked) {
+      const current = state.heatmapSelectedSites === null ? [...state.sites] : [...(state.heatmapSelectedSites || [])];
+      const idx = current.indexOf(site);
+      if (checked && idx === -1) current.push(site);
+      if (!checked && idx !== -1) current.splice(idx, 1);
+      state.heatmapSelectedSites = current.length === state.sites.length ? null : current;
+      updateHeatmapSiteLabel();
       generateHealthHeatmap();
     }
 
+    function setHeatmapSiteSelection(mode) {
+      state.heatmapSelectedSites = mode === 'ALL' ? null : [];
+      document.querySelectorAll('.heatmap-site-cb').forEach(cb => cb.checked = mode === 'ALL');
+      updateHeatmapSiteLabel();
+      generateHealthHeatmap();
+    }
+
+    function selectHeatmapSite(site) {
+      if (site === 'ALL') setHeatmapSiteSelection('ALL');
+      else {
+        state.heatmapSelectedSites = [site];
+        document.querySelectorAll('.heatmap-site-cb').forEach(cb => cb.checked = cb.value === site);
+        updateHeatmapSiteLabel();
+        generateHealthHeatmap();
+      }
+    }
+
+    function updateOverlaySiteLabel() {
+      const label = document.getElementById('overlaySiteLabel');
+      if (!label) return;
+      const selected = state.overlaySelectedSites || [];
+      label.innerText = selected.length === 0 ? 'Select Sites...' : selected.length === 1 ? selected[0] : `${selected.length} Sites Selected`;
+    }
+
     function populateOverlaySelectors() {
-      const siteSel = document.getElementById('overlaySiteSelect');
+      const siteList = document.getElementById('overlaySiteList');
       const kpiASel = document.getElementById('overlayKpiASelect');
       const kpiBSel = document.getElementById('overlayKpiBSelect');
 
-      if (!siteSel || !kpiASel || !kpiBSel) return;
+      if (!siteList || !kpiASel || !kpiBSel) return;
 
-      siteSel.innerHTML = '<option value="">Select Site...</option>' + state.sites.map(s => `<option value="${s}">${s}</option>`).join('');
+      siteList.innerHTML = state.sites.map(s => `
+        <label data-search="${String(s).toLowerCase()}" class="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer">
+          <input type="checkbox" value="${String(s).replace(/"/g, '&quot;')}" ${state.overlaySelectedSites.includes(s) ? 'checked' : ''} onchange="toggleOverlaySite(this.value, this.checked)" class="overlay-site-cb rounded bg-slate-900 border-slate-700 text-violet-500 focus:ring-0">
+          <span class="text-slate-200 font-mono">${s}</span>
+        </label>
+      `).join('');
+      updateOverlaySiteLabel();
+
       kpiASel.innerHTML = '<option value="">Select KPI A...</option>' + state.kpiColumns.map(k => `<option value="${k}">${k}</option>`).join('');
       kpiBSel.innerHTML = '<option value="">Select KPI B...</option>' + state.kpiColumns.map(k => `<option value="${k}">${k}</option>`).join('');
     }
 
+    function toggleOverlaySite(site, checked) {
+      const current = [...(state.overlaySelectedSites || [])];
+      const idx = current.indexOf(site);
+      if (checked && idx === -1) current.push(site);
+      if (!checked && idx !== -1) current.splice(idx, 1);
+      state.overlaySelectedSites = current;
+      updateOverlaySiteLabel();
+    }
+
+    function setOverlaySiteSelection(mode) {
+      state.overlaySelectedSites = mode === 'ALL' ? [...state.sites] : [];
+      document.querySelectorAll('.overlay-site-cb').forEach(cb => cb.checked = mode === 'ALL');
+      updateOverlaySiteLabel();
+    }
+
     function renderOverlayChart() {
-      const site = document.getElementById('overlaySiteSelect').value;
+      const sites = state.overlaySelectedSites || [];
       const kpiA = document.getElementById('overlayKpiASelect').value;
       const kpiB = document.getElementById('overlayKpiBSelect').value;
 
-      if (!site || !kpiA || !kpiB) return alert('Please select a Site and two KPIs to overlay.');
+      if (sites.length === 0 || !kpiA || !kpiB) return alert('Please select at least one Site and two KPIs to overlay.');
 
       const wrapper = document.getElementById('overlayChartWrapper');
       wrapper.classList.remove('hidden');
 
       const timeCol = state.dateKey;
-      const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
-      const timestamps = Array.from(new Set(siteRows.map(d => d[timeCol]))).sort();
+      const timestamps = Array.from(new Set(state.dataset.filter(d => sites.includes(String(d[state.siteKey]))).map(d => d[timeCol]))).sort();
+      const datasets = [];
+      const siteColors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#84cc16'];
 
-      const dataA = timestamps.map(ts => {
-        const matches = siteRows.filter(d => d[timeCol] === ts);
-        const vals = matches.map(m => parseMetricValue(m[kpiA], kpiA)).filter(v => v !== null);
-        return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-      });
-
-      const dataB = timestamps.map(ts => {
-        const matches = siteRows.filter(d => d[timeCol] === ts);
-        const vals = matches.map(m => parseMetricValue(m[kpiB], kpiB)).filter(v => v !== null);
-        return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      sites.forEach((site, siteIdx) => {
+        const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
+        const dataA = timestamps.map(ts => {
+          const vals = siteRows.filter(d => d[timeCol] === ts).map(m => parseMetricValue(m[kpiA], kpiA)).filter(v => v !== null);
+          return vals.length > 0 ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+        });
+        const dataB = timestamps.map(ts => {
+          const vals = siteRows.filter(d => d[timeCol] === ts).map(m => parseMetricValue(m[kpiB], kpiB)).filter(v => v !== null);
+          return vals.length > 0 ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+        });
+        const c = siteColors[siteIdx % siteColors.length];
+        datasets.push({ label: `${site} — ${kpiA}`, data: dataA, borderColor: c, backgroundColor: c + '20', yAxisID: 'yA', borderWidth: 2, tension: 0.3 });
+        datasets.push({ label: `${site} — ${kpiB}`, data: dataB, borderColor: c, backgroundColor: c + '20', yAxisID: 'yB', borderWidth: 2, borderDash: [6,4], tension: 0.3 });
       });
 
       const canvas = document.getElementById('overlayChartCanvas');
       const ctx = canvas.getContext('2d');
-
       if (state.comparisonChart) state.comparisonChart.destroy();
 
       state.comparisonChart = new Chart(ctx, {
         type: 'line',
-        data: {
-          labels: timestamps,
-          datasets: [
-            {
-              label: kpiA,
-              data: dataA,
-              borderColor: '#ec4899',
-              backgroundColor: '#ec489920',
-              yAxisID: 'yA',
-              borderWidth: 2,
-              tension: 0.3
-            },
-            {
-              label: kpiB,
-              data: dataB,
-              borderColor: '#06b6d4',
-              backgroundColor: '#06b6d420',
-              yAxisID: 'yB',
-              borderWidth: 2,
-              tension: 0.3
-            }
-          ]
-        },
+        data: { labels: timestamps, datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
           scales: {
-            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
-            yA: { type: 'linear', position: 'left', grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#ec4899' } },
-            yB: { type: 'linear', position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#06b6d4' } }
-          }
+            yA: { type: 'linear', position: 'left', title: { display: true, text: kpiA } },
+            yB: { type: 'linear', position: 'right', title: { display: true, text: kpiB }, grid: { drawOnChartArea: false } }
+          },
+          plugins: { legend: { display: true, labels: { color: '#cbd5e1', font: { size: 10 } } } }
         }
       });
     }
