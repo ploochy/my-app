@@ -1,4 +1,4 @@
-a<!DOCTYPE html>
+Aa<!DOCTYPE html>
 <html lang="en">
 <head>
   <link rel="icon" type="image/png" href="favicon.png">
@@ -448,6 +448,9 @@ a<!DOCTYPE html>
               <button onclick="smartAutoFillThresholds()" title="Auto-suggests Target/Warning/Critical values for any KPI you haven't already configured — never overwrites values you've set" class="px-3 py-1 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 border border-fuchsia-500/40 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5">
                 🪄 Smart Auto-Fill
               </button>
+              <button onclick="checkPercentScaleIssues()" title="Re-scans loaded data for percentage columns stored as 0–1 fractions (e.g. 0.019 instead of 1.9) and offers to fix them. Safe to run anytime, even after plotting." class="px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5">
+                🔍 Check for %-Scale Issues
+              </button>
               <button onclick="saveThresholdConfiguration()" class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-[11px] transition-all">
                 💾 Save Thresholds & Cutovers
               </button>
@@ -655,7 +658,7 @@ a<!DOCTYPE html>
               <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <div id="auditSiteFilterMenu" class="custom-dropdown-menu hidden absolute left-0 mt-2 w-64 bg-slate-950 border border-pink-500/50 rounded-xl p-2 max-h-72 overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
-              <input type="text" id="auditSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterAuditSiteDropdownList()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-pink-500 focus:outline-none font-mono mb-2">
+              <input type="text" id="auditSiteFilterSearch" placeholder="🔍 Search site..." onkeyup="filterDropdownItems('auditSiteFilterList', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-pink-500 focus:outline-none font-mono mb-2">
               <div id="auditSiteFilterList" class="space-y-0.5 text-[11px]"></div>
             </div>
           </div>
@@ -900,15 +903,19 @@ a<!DOCTYPE html>
                 <div id="heatmapSiteFilterList" class="space-y-0.5 text-[11px]"></div>
               </div>
             </div>
+            <button onclick="exportHealthHeatmapExcel()" title="Export the heatmap grid as Excel (status text per cell — color it yourself with conditional formatting)" class="px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-amber-500 text-slate-300 hover:text-amber-300 font-bold rounded-xl transition-all text-[11px] flex items-center gap-1.5 whitespace-nowrap">
+              📊 Export Excel
+            </button>
             <button onclick="toggleAnalysisSection('healthHeatmapBody', 'healthHeatmapToggle')" id="healthHeatmapToggle" class="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-amber-300 border border-slate-700 rounded-lg font-bold text-[11px] transition-all whitespace-nowrap">
               ▲ Collapse
             </button>
           </div>
         </div>
         <div id="healthHeatmapBody" class="space-y-2">
-          <div class="flex items-center gap-4 text-[11px] font-mono text-slate-400">
+          <div class="flex items-center gap-4 text-[11px] font-mono text-slate-400 flex-wrap">
             <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-emerald-500 inline-block"></span> OK</span>
             <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-rose-600 inline-block"></span> Under Threshold</span>
+            <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-black border-2 border-red-600 inline-block"></span> Not Reporting</span>
             <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-slate-700 inline-block"></span> No Threshold Set</span>
           </div>
           <div id="heatmapContainer" class="overflow-x-auto custom-scrollbar text-xs text-slate-500 font-mono italic">Run the audit in Step 3 first.</div>
@@ -1045,8 +1052,33 @@ a<!DOCTYPE html>
 
       // Multi-site reporting selectors
       heatmapSelectedSites: null,
+      lastHeatmapData: null,
       overlaySelectedSites: []
     };
+
+    // Restores any previously-saved threshold/cutover config from the browser as soon as the script
+    // loads, before any file is uploaded — so file processing finds these already in state.kpiThresholds
+    // and reuses them for matching KPI names instead of generating fresh suggestions. This was
+    // previously write-only (saveThresholdConfiguration saved to localStorage, but nothing ever read it
+    // back) — that's now fixed.
+    function loadThresholdConfiguration() {
+      try {
+        const raw = localStorage.getItem('plootchy_threshold_config');
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (saved && typeof saved === 'object') {
+          if (saved.kpiThresholds && typeof saved.kpiThresholds === 'object') {
+            state.kpiThresholds = saved.kpiThresholds;
+          }
+          if (Array.isArray(saved.cutovers)) {
+            state.cutovers = saved.cutovers;
+          }
+        }
+      } catch (err) {
+        // Corrupted or inaccessible storage (e.g. sandboxed preview, private browsing) — start fresh.
+      }
+    }
+    loadThresholdConfiguration();
 
     // Close Dropdowns on Click Outside
     document.addEventListener('click', (e) => {
@@ -1135,17 +1167,102 @@ a<!DOCTYPE html>
       return isNaN(num) ? null : num;
     }
 
-    const FRACTIONAL_PERCENT_ELIGIBLE_CATEGORIES = ['avail', 'access', 'retain', 'handover', 'generic'];
+    // Dedicated classifier for the fractional-percent check ONLY — deliberately separate from
+    // detectKpiCategory(), because that function buckets "Drop Rate" under the same 'retain' category
+    // as Retainability (fine for recommendation text, since both are call-failure related) — but for
+    // THIS check that's wrong: Retainability is healthy near 100%, while Drop Rate is healthy near 0%.
+    // Reusing the merged category here would flag a perfectly normal 1.5% drop rate as a scale bug.
+    function isNearHundredPercentKpi(kpiName) {
+      const l = kpiName.toLowerCase();
+      if (l.includes('drop')) return false;                                    // healthy near 0%
+      if (l.includes('interfer') || l.includes('noise') || l.includes('rtwp')) return false; // often low %, not near-100
+      if (l.includes('util') || l.includes('load') || l.includes('prb')) return false;        // can legitimately be low
+      if (l.includes('avail') || l.includes('setup') || l.includes('access') || l.includes('csr') || l.includes('cssr') ||
+          l.includes('retain') || l.includes('handover') || l.includes('ho_') || l.includes('hosr') ||
+          l.includes('rate') || l.includes('ratio') || l.includes('success') || l.includes('completion')) return true;
+      return false; // unrecognized pattern — don't guess, skip the fractional check to be safe
+    }
+
+    // "Healthy near 0%" KPIs (Drop Rate) still need SOME fractional check — a genuinely low reading
+    // like 1.2% is completely normal, but a value under this much tighter cutoff (0.05) is far more
+    // likely to be a mis-scaled fraction (0.019 meaning 1.9%) than a real near-perfect 0.019% drop
+    // rate, which essentially never happens in practice. Kept as its own narrow rule, separate from
+    // isNearHundredPercentKpi()'s much wider 1.5 cutoff, specifically so 1–3% normal readings are
+    // never touched.
+    function isNearZeroPercentKpi(kpiName) {
+      return kpiName.toLowerCase().includes('drop');
+    }
+
+    // ============================================================
+    // SHARED THRESHOLD EVALUATION — single source of truth used by the Step 3 audit table, the
+    // heatmap, Site Readiness, and Bad KPI Analysis. Fixes a real bug where those features were
+    // comparing values only against `target` (ignoring warning/critical), and — critically — ignoring
+    // whether the KPI's "Active" toggle or individual Target/Warning/Critical "show" checkboxes were
+    // even turned on in Step 2. That's why a good CQI reading (e.g. 10.77, above its target) could
+    // still get flagged: the code was checking it against a leftover `warning` number that was never
+    // actually meant to be active.
+    // ============================================================
+
+    // Checks ONE value against a KPI's threshold. Returns:
+    //   null      -> no active bound configured (can't verify this KPI)
+    //   false     -> has active bound(s), value is within them (OK)
+    //   'target' | 'warning' | 'critical' -> breached, at that severity (worst one that matched)
+    function evaluateSingleValue(val, thresh) {
+      if (!thresh || !thresh.enable) return null;
+      const higherIsWorse = thresh.direction === 'higher_is_worse';
+      const hasCritical = !!thresh.showCritical && thresh.critical !== undefined && thresh.critical !== null && !isNaN(parseFloat(thresh.critical));
+      const hasWarning = !!thresh.showWarning && thresh.warning !== undefined && thresh.warning !== null && !isNaN(parseFloat(thresh.warning));
+      const hasTarget = !!thresh.showTarget && thresh.target !== undefined && thresh.target !== null && !isNaN(parseFloat(thresh.target));
+      if (!hasCritical && !hasWarning && !hasTarget) return null;
+
+      if (hasCritical && (higherIsWorse ? val > thresh.critical : val < thresh.critical)) return 'critical';
+      if (hasWarning && (higherIsWorse ? val > thresh.warning : val < thresh.warning)) return 'warning';
+      if (hasTarget && (higherIsWorse ? val > thresh.target : val < thresh.target)) return 'target';
+      return false;
+    }
+
+    // Evaluates a WINDOW of daily values (already sliced to the desired lookback) against a KPI's
+    // threshold — flags "Not Reporting" for no data / 0% availability, otherwise the worst breach seen
+    // across the window (any single bad day counts). Returns { status, severity }.
+    function evaluateKpiWindow(values, thresh, kpiName) {
+      const vals = (values || []).filter(v => v !== null && v !== undefined && !isNaN(v));
+      if (vals.length === 0) return { status: 'Not Reporting', severity: 'critical' };
+
+      const isAvailabilityKpi = (kpiName || '').toLowerCase().includes('avail');
+      if (isAvailabilityKpi && vals.every(v => Math.abs(v) < 0.01)) {
+        return { status: 'Not Reporting', severity: 'critical' };
+      }
+
+      if (!thresh || !thresh.enable) return { status: 'No Threshold Set', severity: null };
+
+      const rank = { critical: 3, warning: 2, target: 1 };
+      let worst = null;
+      let anyActiveBound = false;
+      vals.forEach(val => {
+        const hit = evaluateSingleValue(val, thresh);
+        if (hit === null) return; // no active bound — handled by the check after the loop
+        anyActiveBound = true;
+        if (hit && (!worst || rank[hit] > rank[worst])) worst = hit;
+      });
+
+      if (!anyActiveBound) return { status: 'No Threshold Set', severity: null };
+      return { status: worst ? 'Under Threshold' : 'OK', severity: worst };
+    }
+
 
     function detectFractionalPercentValues() {
       const affected = {};
       state.kpiColumns.forEach(kpi => {
         if (!kpi.includes('%')) return;
-        if (!FRACTIONAL_PERCENT_ELIGIBLE_CATEGORIES.includes(detectKpiCategory(kpi))) return;
+        let cutoff;
+        if (isNearHundredPercentKpi(kpi)) cutoff = 1.5;
+        else if (isNearZeroPercentKpi(kpi)) cutoff = 0.05;
+        else return; // not an eligible category
+
         let count = 0;
         state.dataset.forEach(row => {
           const v = parseMetricValue(row[kpi], kpi);
-          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= 1.5) count++;
+          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= cutoff) count++;
         });
         if (count > 0) affected[kpi] = count;
       });
@@ -1154,11 +1271,43 @@ a<!DOCTYPE html>
 
     function rescaleFractionalPercentValues(affected) {
       Object.keys(affected).forEach(kpi => {
+        const cutoff = isNearHundredPercentKpi(kpi) ? 1.5 : (isNearZeroPercentKpi(kpi) ? 0.05 : 1.5);
         state.dataset.forEach(row => {
           const v = parseMetricValue(row[kpi], kpi);
-          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= 1.5) row[kpi] = v * 100;
+          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= cutoff) row[kpi] = v * 100;
         });
       });
+    }
+
+    // Re-runnable version of the fractional-percent check — available anytime via the "🔍 Check for
+    // %-Scale Issues" button in Step 2, not just once at upload time. Covers the case where the prompt
+    // was declined earlier, or the data was loaded before this check existed. Refreshes any already-
+    // plotted charts immediately so a fix is visible without needing to re-upload.
+    // silentIfNone: when true, stays quiet if nothing's wrong (used during normal file upload so it
+    // doesn't nag every time); when false/omitted, confirms explicitly that everything looks fine.
+    function checkPercentScaleIssues(silentIfNone) {
+      if (!state.dataset || state.dataset.length === 0) {
+        if (!silentIfNone) alert('Load a data file first — there is no data to check yet.');
+        return;
+      }
+      const fractionalPercentValues = detectFractionalPercentValues();
+      const fractionalPercentCols = Object.keys(fractionalPercentValues);
+      if (fractionalPercentCols.length === 0) {
+        if (!silentIfNone) alert('✓ No scale issues detected — every percentage-named column already looks correctly scaled (0–100).');
+        return;
+      }
+
+      const totalCells = Object.values(fractionalPercentValues).reduce((a, b) => a + b, 0);
+      const detailLines = fractionalPercentCols.map(k => `${k} — ${fractionalPercentValues[k]} cell(s)`).join('\n');
+      const proceed = confirm(
+        `Heads up: ${totalCells} value(s) across ${fractionalPercentCols.length} column(s) are named as percentages but stored as 0–1 fractions instead of 0–100 (e.g. 0.019 instead of 1.9):\n\n${detailLines}\n\nRescale just those affected values ×100? Correctly-scaled values in the same column are left untouched either way.\n\nClick Cancel to keep the file's values exactly as-is.`
+      );
+      if (proceed) {
+        rescaleFractionalPercentValues(fractionalPercentValues);
+        // Rebuild any already-plotted charts so the fix shows up immediately, not just on next upload.
+        if (Object.keys(state.chartInstances || {}).length > 0) renderMultiPlots();
+        alert(`✓ Fixed ${totalCells} value(s) across ${fractionalPercentCols.length} column(s). Any already-plotted charts were refreshed.`);
+      }
     }
 
     function handleFileUpload(e) {
@@ -1270,16 +1419,10 @@ a<!DOCTYPE html>
         });
       });
 
-      const fractionalPercentValues = detectFractionalPercentValues();
-      const fractionalPercentCols = Object.keys(fractionalPercentValues);
-      if (fractionalPercentCols.length > 0) {
-        const totalCells = Object.values(fractionalPercentValues).reduce((a, b) => a + b, 0);
-        const detailLines = fractionalPercentCols.map(k => `${k} — ${fractionalPercentValues[k]} cell(s)`).join('\n');
-        const proceed = confirm(
-          `Heads up: ${totalCells} value(s) across ${fractionalPercentCols.length} column(s) are named as percentages but stored as 0–1 fractions instead of 0–100 (e.g. 0.98 instead of 98):\n\n${detailLines}\n\nRescale just those affected values ×100? Correctly-scaled values in the same column are left untouched either way.\n\nClick Cancel to keep the file's values exactly as-is.`
-        );
-        if (proceed) rescaleFractionalPercentValues(fractionalPercentValues);
-      }
+      // Catch percentage-named columns with individual values stored as raw fractions (0.019 instead
+      // of 1.9) — same check is also available anytime afterward via the "🔍 Check for %-Scale Issues"
+      // button in Step 2, in case this gets declined here or the data was loaded before this existed.
+      checkPercentScaleIssues(true);
 
       state.sites = Array.from(new Set(state.dataset.map(d => String(d[state.siteKey])))).filter(Boolean);
       state.cells = state.cellKey ? Array.from(new Set(state.dataset.map(d => String(d[state.cellKey])))).filter(Boolean) : [];
@@ -1413,6 +1556,9 @@ a<!DOCTYPE html>
       if (l.includes('setup') || l.includes('access') || l.includes('csr') || l.includes('cssr')) return 'access';
       if (l.includes('drop') || l.includes('retain') || l.includes('cdr')) return 'retain';
       if (l.includes('handover') || l.includes('ho_') || l.includes('hosr')) return 'handover';
+      if (l.includes('cqi') || l.includes('ecno') || l.includes('ec/no') || l.includes('rscp')) return 'cqi';
+      if (l.includes('interfer') || l.includes('noise') || l.includes('rtwp')) return 'interference';
+      if (l.includes('lat') || l.includes('delay') || l.includes('rtt')) return 'latency';
       if (l.includes('traffic') || l.includes('payload') || l.includes('volume')) return 'traffic';
       if (l.includes('throughput') || l.includes('thp') || l.includes('speed')) return 'thp';
       if (l.includes('prb') || l.includes('util') || l.includes('load')) return 'util';
@@ -1426,6 +1572,102 @@ a<!DOCTYPE html>
       if (l.includes('3g') || l.includes('wcdma') || l.includes('rnc') || l.includes('nodeb')) return '3G';
       if (l.includes('2g') || l.includes('gsm') || l.includes('bsc')) return '2G';
       return null;
+    }
+
+    // Technology-aware optimization suggestions. 'UNKNOWN' is used whenever the technology can't be
+    // confirmed (name-based detection failed and the KPI hasn't been manually tagged in Step 2's
+    // threshold matrix) — it deliberately stays generic/tech-neutral rather than guessing a generation.
+    const KPI_RECOMMENDATION_MATRIX = {
+      access: {
+        '2G': { diagnosis: 'Call/session setup failures rising (2G/GSM — CSSR)', actions: ['Check TCH/SDCCH channel congestion & blocking', 'Review Abis link capacity and BSC admission control', 'Inspect BTS alarms and timing advance'] },
+        '3G': { diagnosis: 'Call/session setup failures rising (3G/UMTS — CSSR)', actions: ['Check RNC admission control & RAB assignment failures', 'Review Iub/Iu interface capacity and NodeB channel element (CE) resource', 'Inspect congestion on the RNC'] },
+        '4G': { diagnosis: 'RRC/Access setup failures rising (4G/LTE)', actions: ['Check RACH config & PRACH root sequence', 'Review RRC congestion / admission control counters', 'Verify no cell barring or license capacity cap'] },
+        '5G': { diagnosis: 'Access setup failures rising (5G/NR)', actions: ['Check NR RACH/beam management config', 'Review gNodeB admission control & N2/N1 signaling to AMF', 'Verify no slicing-related admission restriction'] },
+        'UNKNOWN': { diagnosis: 'Call/session setup failures rising (CSSR/RRC/Attach)', actions: ['Confirm which generation this KPI belongs to (Step 2) for a technology-specific diagnosis', 'Check admission control counters and the relevant transport link (Abis/Iub/RACH/N2)'] }
+      },
+      handover: {
+        '2G': { diagnosis: 'Handover success rate degraded (2G/GSM)', actions: ['Check BSC handover thresholds (RXLEV/RXQUAL) & neighbor list', 'Review Abis/Ater transmission link quality', 'Inspect timing advance / cell reselection parameters'] },
+        '3G': { diagnosis: 'Handover success rate degraded (3G/UMTS)', actions: ['Check RNC soft/softer handover parameters & active set size', 'Review Iub transmission link capacity', 'Verify intra/inter-frequency neighbor cell list completeness'] },
+        '4G': { diagnosis: 'Handover success rate degraded (4G/LTE)', actions: ['Check A3 offset / time-to-trigger (TTT) parameters', 'Review neighbor relations & ANR-detected missing neighbors', 'Inspect X2/S1 handover signaling failures & timers'] },
+        '5G': { diagnosis: 'Handover success rate degraded (5G/NR)', actions: ['Check NR mobility event thresholds (A3/A5) & beam switching', 'Review Xn/N2 handover signaling', 'If NSA, verify EN-DC anchor (LTE) stability'] },
+        'UNKNOWN': { diagnosis: 'Handover success rate degraded', actions: ['Confirm which generation this KPI belongs to (Step 2) for a technology-specific diagnosis', 'Review neighbor list / handover parameters and the relevant transport link'] }
+      },
+      retain: {
+        '2G': { diagnosis: 'Call drop / retainability degraded (2G/GSM)', actions: ['Check TCH drop causes (RF loss, Abis/Ater failure)', 'Review co-channel/adjacent-channel interference', 'Inspect timing advance overflow (cell too large)'] },
+        '3G': { diagnosis: 'Call drop / retainability degraded (3G/UMTS)', actions: ['Check RAB release causes & soft handover failures', 'Review Iub congestion and NodeB/RNC alarms', 'Inspect uplink interference (RTWP)'] },
+        '4G': { diagnosis: 'Call/session drop rate elevated (4G/LTE)', actions: ['Check handover failure causes (HO out/in)', 'Review radio link failure (RLF) counters', 'Inspect neighbor list & X2/S1 handover config'] },
+        '5G': { diagnosis: 'Call/session drop rate elevated (5G/NR)', actions: ['Check NR radio link failure (RLF) & beam failure recovery counters', 'Review Xn/N2 handover config', 'If NSA, check EN-DC split bearer stability'] },
+        'UNKNOWN': { diagnosis: 'Call/session drop rate elevated', actions: ['Confirm which generation this KPI belongs to (Step 2) for technology-specific causes', 'Cross-check against handover and interference KPIs for the same object'] }
+      },
+      avail: {
+        '2G': { diagnosis: 'Cell availability degraded (2G/GSM)', actions: ['Check BTS alarms & power supply', 'Review Abis/Ater transmission link status', 'Confirm no unlogged maintenance activity'] },
+        '3G': { diagnosis: 'Cell availability degraded (3G/UMTS)', actions: ['Check NodeB alarms & RNC connectivity', 'Review Iub transmission link status', 'Confirm no unlogged maintenance activity'] },
+        '4G': { diagnosis: 'Cell availability degraded (4G/LTE)', actions: ['Check for unplanned outages / VSWR alarms', 'Review transmission link (backhaul/S1) status', 'Confirm no ongoing maintenance not logged as cutover'] },
+        '5G': { diagnosis: 'Cell availability degraded (5G/NR)', actions: ['Check gNodeB alarms & active antenna system (AAS) status', 'Review fronthaul/midhaul transmission link', 'Confirm no unlogged maintenance activity'] },
+        'UNKNOWN': { diagnosis: 'Cell availability degraded', actions: ['Confirm which generation this KPI belongs to (Step 2) for the right transport link to check', 'Check for site alarms and unplanned outages regardless of generation'] }
+      },
+      cqi: {
+        '2G': { diagnosis: 'Radio link quality degraded (2G/GSM — RXQUAL)', actions: ['Check for co-/adjacent-channel interference', 'Review frequency planning & hopping sequence', 'Inspect coverage vs cell edge distribution'] },
+        '3G': { diagnosis: 'Radio link quality degraded (3G/UMTS — Ec/No, RSCP)', actions: ['Check for pilot pollution & scrambling code conflicts', 'Review RF tilt / azimuth vs coverage plan', 'Inspect uplink interference (RTWP)'] },
+        '4G': { diagnosis: 'Channel quality (CQI) degraded (4G/LTE)', actions: ['Check for interference or overshooting cells', 'Review RF tilt / azimuth vs coverage plan', 'Inspect UE distribution vs cell edge coverage'] },
+        '5G': { diagnosis: 'Channel quality degraded (5G/NR — SS-RSRP/SINR)', actions: ['Check beam management & mMIMO configuration', 'Review RF tilt/azimuth and overshooting beams', 'Inspect interference from neighboring beams/cells'] },
+        'UNKNOWN': { diagnosis: 'Radio link quality degraded', actions: ['Confirm which generation this KPI belongs to (Step 2) — metric differs by generation (RXQUAL/Ec-No/CQI/SINR)', 'Check for interference and overshooting coverage regardless of generation'] }
+      },
+      interference: {
+        '2G': { diagnosis: 'Interference / noise floor rising (2G/GSM)', actions: ['Run frequency plan audit for co-/adjacent-channel reuse', 'Check for external interferers near the site', 'Review hopping sequence configuration'] },
+        '3G': { diagnosis: 'Uplink interference rising (3G/UMTS — RTWP)', actions: ['Check for pilot pollution & scrambling code plan conflicts', 'Run interference scan / spectrum analysis', 'Review uplink power control settings'] },
+        '4G': { diagnosis: 'Interference / noise floor rising (4G/LTE)', actions: ['Run interference scan / spectrum analysis', 'Check for PIM sources or external interferers', 'Review uplink power control settings'] },
+        '5G': { diagnosis: 'Interference / noise floor rising (5G/NR)', actions: ['Check for inter-beam interference or PIM sources', 'Review spectrum sharing conflicts (DSS) if applicable', 'Run interference scan / spectrum analysis'] },
+        'UNKNOWN': { diagnosis: 'Interference / noise floor rising', actions: ['Confirm which generation this KPI belongs to (Step 2) for a technology-specific check', 'Run an interference scan / spectrum analysis regardless of generation'] }
+      },
+      latency: {
+        '2G': { diagnosis: 'Latency above acceptable range (2G/GSM)', actions: ['Check Abis/Ater transmission delay', 'Review BSC processing load', 'Inspect signaling link congestion'] },
+        '3G': { diagnosis: 'Latency/RTT above acceptable range (3G/UMTS)', actions: ['Check Iub/Iu transmission delay', 'Review RNC processing load', 'Inspect core network routing'] },
+        '4G': { diagnosis: 'Latency/RTT above acceptable range (4G/LTE)', actions: ['Check backhaul congestion / QoS marking', 'Review core network routing & S1-U path', 'Inspect scheduler config for delay-sensitive bearers'] },
+        '5G': { diagnosis: 'Latency above acceptable range (5G/NR)', actions: ['Check fronthaul/midhaul transmission delay', 'Review edge computing (MEC) placement', 'Inspect network slicing SLA / scheduler config'] },
+        'UNKNOWN': { diagnosis: 'Latency/RTT above acceptable range', actions: ['Confirm which generation this KPI belongs to (Step 2) for the right transport segment to check', 'Review transmission delay and core routing regardless of generation'] }
+      },
+      util: {
+        '2G': { diagnosis: 'Traffic channel congestion high (2G/GSM)', actions: ['Check TCH/SDCCH blocking vs Erlang traffic', 'Evaluate capacity expansion (TRX addition)', 'Review traffic distribution across sectors'] },
+        '3G': { diagnosis: 'Resource utilization / congestion high (3G/UMTS)', actions: ['Check channel element (CE) and OVSF code utilization', 'Review NodeB power utilization', 'Evaluate capacity expansion or carrier addition'] },
+        '4G': { diagnosis: 'PRB utilization / congestion high (4G/LTE)', actions: ['Evaluate capacity expansion (carrier aggregation, new carrier)', 'Check load balancing between sectors/layers', 'Review traffic steering thresholds'] },
+        '5G': { diagnosis: 'PRB utilization / congestion high (5G/NR)', actions: ['Evaluate capacity expansion (additional carriers, DSS tuning)', 'Check load balancing between beams/layers', 'Review network slicing resource allocation'] },
+        'UNKNOWN': { diagnosis: 'Resource utilization / congestion high', actions: ['Confirm which generation this KPI belongs to (Step 2) for the right resource to check', 'Evaluate capacity expansion regardless of generation'] }
+      },
+      thp: {
+        '2G': { diagnosis: 'Data throughput below target (2G/EDGE)', actions: ['Check coding scheme (CS/MCS) selection', 'Review timeslot allocation & TRX capacity', 'Inspect Abis backhaul capacity'] },
+        '3G': { diagnosis: 'Data throughput below target (3G/HSPA)', actions: ['Check HSDPA/HSUPA code allocation', 'Review Iub backhaul capacity', 'Inspect CQI-based scheduling efficiency'] },
+        '4G': { diagnosis: 'Throughput below target (4G/LTE)', actions: ['Check PRB utilization & CQI correlation', 'Verify MIMO rank / carrier aggregation status', 'Inspect backhaul capacity at the site'] },
+        '5G': { diagnosis: 'Throughput below target (5G/NR)', actions: ['Check MIMO layer count / beamforming performance', 'Verify network slicing bandwidth allocation', 'Inspect fronthaul/midhaul capacity at the site'] },
+        'UNKNOWN': { diagnosis: 'Throughput below target', actions: ['Confirm which generation this KPI belongs to (Step 2) for a technology-specific diagnosis', 'Check backhaul capacity and radio scheduling regardless of generation'] }
+      },
+      traffic: {
+        'UNKNOWN': { diagnosis: 'Traffic/volume KPI outside expected range', actions: ['Cross-check against Availability and Drop Rate for the same object (a drop can look like a traffic dip)', 'Compare against the same period last week to rule out normal daily/weekly variation'] }
+      },
+      generic: {
+        '2G': { diagnosis: 'Success/completion rate below target (2G/GSM)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 2G KPIs (TCH congestion, Abis link)', 'Review recent config changes near breach time'] },
+        '3G': { diagnosis: 'Success/completion rate below target (3G/UMTS)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 3G KPIs (RAB, Iub congestion)', 'Review recent config changes near breach time'] },
+        '4G': { diagnosis: 'Success/completion rate below target (4G/LTE)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 4G KPIs (retainability, accessibility, mobility)', 'Review recent config changes or cutover events near breach time'] },
+        '5G': { diagnosis: 'Success/completion rate below target (5G/NR)', actions: ['Break down failure counters by cause code', 'Cross-check against correlated 5G KPIs (mobility, RLF, slicing admission)', 'Review recent config changes near breach time'] },
+        'UNKNOWN': { diagnosis: 'KPI outside its configured threshold', actions: ['Confirm which generation this KPI belongs to (Step 2) for technology-specific correlated KPIs to check', 'Break down failure counters by cause code and review recent config/cutover events'] }
+      }
+    };
+
+    // Returns { level, diagnosis, actions, technology, category } for a breached KPI. `severity` should
+    // be 'critical' | 'warning' | 'target' (from evaluateSingleValue/evaluateKpiWindow). Technology is
+    // read from the KPI's manual tag in Step 2 (state.kpiThresholds[kpi].technology) if set, otherwise
+    // guessed from the name — falling back to a generic, tech-neutral suggestion when neither works,
+    // rather than silently assuming one generation.
+    function getKpiRecommendation(kpiName, severity) {
+      const level = severity === 'critical' ? 'Immediate action' : (severity === 'warning' ? 'Monitor closely' : 'Review');
+      const category = detectKpiCategory(kpiName);
+      const cfg = state.kpiThresholds[kpiName];
+      const technology = (cfg && cfg.technology) || detectTechnology(kpiName) || 'UNKNOWN';
+
+      const matrix = KPI_RECOMMENDATION_MATRIX[category] || KPI_RECOMMENDATION_MATRIX.generic;
+      const rec = matrix[technology] || matrix['UNKNOWN'] || KPI_RECOMMENDATION_MATRIX.generic['UNKNOWN'];
+
+      return { level, diagnosis: rec.diagnosis, actions: rec.actions, technology, category };
     }
 
     function suggestThresholdDefaults(kpiName) {
@@ -2155,6 +2397,8 @@ a<!DOCTYPE html>
       Object.keys(state.chartLocalConfigs).forEach(chartId => {
         if (state.chartLocalConfigs[chartId].kpi === kpi) updateChartInPlace(chartId);
       });
+
+      saveThresholdConfiguration();
     }
 
     function bulkApplyTechnology() {
@@ -2164,6 +2408,7 @@ a<!DOCTYPE html>
         state.kpiThresholds[kpi].technology = tech;
       });
       renderKpiThresholdMatrix();
+      saveThresholdConfiguration();
     }
 
     function smartAutoFillThresholds() {
@@ -2484,6 +2729,7 @@ a<!DOCTYPE html>
         return;
       }
 
+      const lookback = state.auditLookbackDays || 3;
       const auditResults = [];
 
       activeChartIds.forEach(chartId => {
@@ -2493,50 +2739,41 @@ a<!DOCTYPE html>
 
         const kpi = cfg.kpi;
         const thresh = state.kpiThresholds[kpi] || {};
-        const direction = thresh.direction || 'lower_is_worse';
-        const targetVal = thresh.target ?? (direction === 'lower_is_worse' ? 95 : 5);
 
         chart.data.datasets.forEach(ds => {
           if (ds.label.startsWith('Target') || ds.label.startsWith('Warning') || ds.label.startsWith('Critical') || ds.label.startsWith('✂️')) return;
 
           const validVals = ds.data.filter(v => v !== null && !isNaN(v));
-          if (validVals.length === 0) return;
-
-          const lookback = state.auditLookbackDays || 3;
           const trailingVals = validVals.slice(-lookback);
-          const currentVal = trailingVals[trailingVals.length - 1];
-          const avgVal = trailingVals.reduce((a, b) => a + b, 0) / trailingVals.length;
+          const currentVal = trailingVals.length > 0 ? trailingVals[trailingVals.length - 1] : null;
+          const avgVal = trailingVals.length > 0 ? trailingVals.reduce((a, b) => a + b, 0) / trailingVals.length : null;
 
-          let status = 'OK';
-          let devPct = 0;
+          const { status, severity } = evaluateKpiWindow(trailingVals, thresh, kpi);
 
-          if (direction === 'lower_is_worse') {
-            if (avgVal < targetVal) {
-              status = 'CRITICAL';
-              devPct = ((targetVal - avgVal) / targetVal) * 100;
-            } else if (thresh.warning && avgVal < thresh.warning) {
-              status = 'WARNING';
-              devPct = ((targetVal - avgVal) / targetVal) * 100;
-            }
-          } else {
-            if (avgVal > targetVal) {
-              status = 'CRITICAL';
-              devPct = ((avgVal - targetVal) / targetVal) * 100;
-            } else if (thresh.warning && avgVal > thresh.warning) {
-              status = 'WARNING';
-              devPct = ((avgVal - targetVal) / targetVal) * 100;
-            }
+          let suggestion = 'KPI performing within nominal thresholds. No immediate action required.';
+          let techLabel = (thresh.technology) || detectTechnology(kpi) || '❔ Tech?';
+          if (status === 'Not Reporting') {
+            suggestion = `No data reported (or 0% availability) in the last ${lookback} day(s) — likely a full outage. Check site power, backhaul/transport link, and OSS/EMS connectivity.`;
+          } else if (status === 'No Threshold Set') {
+            suggestion = 'No active threshold configured for this KPI — enable it in Step 2 to monitor this metric.';
+          } else if (status === 'Under Threshold') {
+            const rec = getKpiRecommendation(kpi, severity);
+            suggestion = `${rec.diagnosis}. ${rec.actions.join('. ')}.`;
+            techLabel = rec.technology === 'UNKNOWN' ? '❔ Tech?' : rec.technology;
           }
 
           auditResults.push({
             seriesLabel: ds.label,
             kpi: kpi,
-            currentVal: currentVal.toFixed(2),
-            avgVal: avgVal.toFixed(2),
-            targetVal: targetVal,
+            currentVal: currentVal !== null ? currentVal.toFixed(2) : '—',
+            avgVal: avgVal !== null ? avgVal.toFixed(2) : '—',
+            targetVal: thresh.showTarget ? thresh.target : '—',
+            warningVal: thresh.showWarning ? thresh.warning : '—',
+            criticalVal: thresh.showCritical ? thresh.critical : '—',
             status: status,
-            devPct: devPct.toFixed(1),
-            tech: thresh.technology || 'GENERIC'
+            severity: severity,
+            suggestion: suggestion,
+            tech: techLabel
           });
         });
       });
@@ -2546,10 +2783,20 @@ a<!DOCTYPE html>
         return;
       }
 
+      state.lastPlottedAuditResults = auditResults;
+
       const totalSeries = auditResults.length;
       const okCount = auditResults.filter(r => r.status === 'OK').length;
-      const warnCount = auditResults.filter(r => r.status === 'WARNING').length;
-      const critCount = auditResults.filter(r => r.status === 'CRITICAL').length;
+      const breachCount = auditResults.filter(r => r.status === 'Under Threshold').length;
+      const notReportingCount = auditResults.filter(r => r.status === 'Not Reporting').length;
+      const noThreshCount = auditResults.filter(r => r.status === 'No Threshold Set').length;
+
+      const statusBadge = (status) => {
+        if (status === 'OK') return `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">OK</span>`;
+        if (status === 'Under Threshold') return `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-500/40 animate-pulse">UNDER THRESHOLD</span>`;
+        if (status === 'Not Reporting') return `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-black text-red-400 border border-red-600 animate-pulse">⚠ NOT REPORTING</span>`;
+        return `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">NO THRESHOLD SET</span>`;
+      };
 
       let html = `
         <div class="glass-card p-5 space-y-4">
@@ -2562,15 +2809,16 @@ a<!DOCTYPE html>
               <span class="text-emerald-400 text-xs block font-semibold">Healthy (OK)</span>
               <span class="text-xl font-black text-emerald-400 mt-1 block">${okCount}</span>
             </div>
-            <div class="p-3 bg-amber-950/40 rounded-xl border border-amber-500/30">
-              <span class="text-amber-400 text-xs block font-semibold">Warning</span>
-              <span class="text-xl font-black text-amber-400 mt-1 block">${warnCount}</span>
-            </div>
             <div class="p-3 bg-rose-950/40 rounded-xl border border-rose-500/30">
-              <span class="text-rose-400 text-xs block font-semibold">Critical / Degraded</span>
-              <span class="text-xl font-black text-rose-400 mt-1 block">${critCount}</span>
+              <span class="text-rose-400 text-xs block font-semibold">Under Threshold</span>
+              <span class="text-xl font-black text-rose-400 mt-1 block">${breachCount}</span>
+            </div>
+            <div class="p-3 bg-black/60 rounded-xl border border-red-800">
+              <span class="text-red-400 text-xs block font-semibold">Not Reporting</span>
+              <span class="text-xl font-black text-red-400 mt-1 block">${notReportingCount}</span>
             </div>
           </div>
+          ${noThreshCount > 0 ? `<div class="text-[11px] text-slate-500 font-mono">ℹ️ ${noThreshCount} series have no active threshold in Step 2 and were skipped from pass/fail — they still appear below marked "No Threshold Set".</div>` : ''}
 
           <div class="overflow-x-auto rounded-xl border border-slate-800">
             <table class="w-full text-left text-xs font-mono">
@@ -2579,10 +2827,12 @@ a<!DOCTYPE html>
                   <th class="p-3">Object / Series</th>
                   <th class="p-3">KPI Counter</th>
                   <th class="p-3">Tech</th>
-                  <th class="p-3 text-center">Current</th>
-                  <th class="p-3 text-center">Avg (Last ${state.auditLookbackDays}d)</th>
+                  <th class="p-3 text-center">Avg (Last ${lookback}d)</th>
                   <th class="p-3 text-center">Target</th>
-                  <th class="p-3 text-center">Audit Status</th>
+                  <th class="p-3 text-center">Warning</th>
+                  <th class="p-3 text-center">Critical</th>
+                  <th class="p-3 text-center">Status</th>
+                  <th class="p-3">Optimization Suggestion</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/60 bg-slate-900/40">
@@ -2591,16 +2841,12 @@ a<!DOCTYPE html>
                     <td class="p-3 font-bold text-slate-200">${r.seriesLabel}</td>
                     <td class="p-3 text-pink-300 font-bold">${r.kpi}</td>
                     <td class="p-3 text-cyan-300">${r.tech}</td>
-                    <td class="p-3 text-center text-white">${r.currentVal}</td>
-                    <td class="p-3 text-center text-slate-300">${r.avgVal}</td>
+                    <td class="p-3 text-center text-white">${r.avgVal}</td>
                     <td class="p-3 text-center text-slate-400">${r.targetVal}</td>
-                    <td class="p-3 text-center">
-                      <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        r.status === 'OK' ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' :
-                        r.status === 'WARNING' ? 'bg-amber-950 text-amber-300 border border-amber-500/40' :
-                        'bg-rose-950 text-rose-300 border border-rose-500/40 animate-pulse'
-                      }">${r.status}</span>
-                    </td>
+                    <td class="p-3 text-center text-amber-400">${r.warningVal}</td>
+                    <td class="p-3 text-center text-rose-400">${r.criticalVal}</td>
+                    <td class="p-3 text-center">${statusBadge(r.status)}</td>
+                    <td class="p-3 text-slate-300 text-[11px] leading-snug max-w-xs">${r.suggestion}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -2781,9 +3027,11 @@ a<!DOCTYPE html>
 
         selectedKpis.forEach(kpi => {
           const thresh = state.kpiThresholds[kpi] || {};
-          const direction = thresh.direction || 'lower_is_worse';
-          const hasTarget = thresh.target !== undefined && thresh.target !== null && !Number.isNaN(Number(thresh.target));
-          const targetVal = hasTarget ? Number(thresh.target) : null;
+          const hasAnyActiveBound = !!thresh.enable && (
+            (!!thresh.showTarget && thresh.target !== undefined && thresh.target !== null && !isNaN(parseFloat(thresh.target))) ||
+            (!!thresh.showWarning && thresh.warning !== undefined && thresh.warning !== null && !isNaN(parseFloat(thresh.warning))) ||
+            (!!thresh.showCritical && thresh.critical !== undefined && thresh.critical !== null && !isNaN(parseFloat(thresh.critical)))
+          );
 
           let failedDays = 0;
 
@@ -2791,27 +3039,34 @@ a<!DOCTYPE html>
             const rowsForTs = siteRows.filter(d => d[timeCol] === ts);
             const vals = rowsForTs.map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
 
-            // Missing KPI data for a day is a failed day for customer acceptance.
-            if (vals.length === 0 || !hasTarget) {
-              failedDays++;
-              return;
-            }
+            // Missing KPI data for a day is a failed day for customer acceptance — can't confirm health.
+            if (vals.length === 0) { failedDays++; return; }
+            if (!hasAnyActiveBound) return; // no active threshold to check against — handled below
 
-            // Keep the existing site/day aggregation logic only for the PASS/FAIL check.
-            // The resulting average is intentionally NOT displayed or exported.
+            // Correctly checks whichever of Target/Warning/Critical are actually turned on for this KPI
+            // (previously this only ever compared against `target`, ignoring Warning/Critical entirely
+            // and ignoring the Active/show-line toggles — that's what let a genuinely good CQI reading
+            // get flagged as a failure).
             const dayAvg = vals.reduce((a, b) => a + b, 0) / vals.length;
-            const failed = direction === 'higher_is_worse' ? dayAvg > targetVal : dayAvg < targetVal;
-            if (failed) failedDays++;
+            if (evaluateSingleValue(dayAvg, thresh)) failedDays++;
           });
 
-          const isKpiOk = failedDays === 0 && evalTimestamps.length > 0 && hasTarget;
-          if (!isKpiOk) siteIsReady = false;
+          let status;
+          if (!hasAnyActiveBound) status = 'NO_THRESHOLD';
+          else if (evalTimestamps.length === 0) status = 'NO_DATA';
+          else if (failedDays > 0) status = 'FAIL';
+          else status = 'PASS';
+
+          const isKpiOk = status === 'PASS';
+          if (status === 'FAIL') siteIsReady = false;
 
           kpiEvaluations.push({
             kpi: kpi,
-            targetVal: hasTarget ? targetVal : 'Not Set',
+            targetVal: thresh.showTarget && thresh.target != null ? thresh.target
+                     : (thresh.showCritical && thresh.critical != null ? thresh.critical : 'Not Set'),
             failedDays: failedDays,
-            isOk: isKpiOk
+            isOk: isKpiOk,
+            status: status
           });
         });
 
@@ -2887,8 +3142,13 @@ a<!DOCTYPE html>
                           <td class="p-2 text-center text-slate-400">${k.targetVal}</td>
                           <td class="p-2 text-center ${k.failedDays > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}">${k.failedDays} days</td>
                           <td class="p-2 text-center">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${k.isOk ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'}">
-                              ${k.isOk ? 'PASS' : 'FAIL'}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
+                              k.status === 'PASS' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                              k.status === 'NO_THRESHOLD' ? 'bg-slate-800 text-slate-400 border border-slate-700' :
+                              k.status === 'NO_DATA' ? 'bg-black text-red-400 border border-red-600' :
+                              'bg-rose-950 text-rose-400 border border-rose-800'
+                            }">
+                              ${k.status === 'PASS' ? 'PASS' : k.status === 'NO_THRESHOLD' ? 'NO THRESHOLD SET' : k.status === 'NO_DATA' ? 'NO DATA' : 'FAIL'}
                             </span>
                           </td>
                         </tr>
@@ -2984,10 +3244,13 @@ a<!DOCTYPE html>
           detailRows.push({
             'Site / Object': r.site,
             'Degraded KPI': k.kpi,
+            'Technology': k.technology || 'UNKNOWN',
             'Issue': k.issue,
             'Required Target': k.targetVal,
             'Failed Days': k.failedDays,
             'Failed / Evaluated Period': k.failedPeriod,
+            'Diagnosis': k.diagnosis || '',
+            'Recommended Actions': (k.actions || []).join(' | '),
             'Requested Period (Days)': meta.requestedDays ?? '',
             'Evaluated Days': meta.evaluatedDays ?? ''
           });
@@ -3002,7 +3265,7 @@ a<!DOCTYPE html>
 
       if (detailRows.length > 0) {
         const detailWs = XLSX.utils.json_to_sheet(detailRows);
-        detailWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 30 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 22 }, { wch: 16 }];
+        detailWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 45 }, { wch: 60 }, { wch: 22 }, { wch: 16 }];
         XLSX.utils.book_append_sheet(wb, detailWs, 'Degraded KPI Detail');
       }
 
@@ -3181,25 +3444,44 @@ a<!DOCTYPE html>
 
         selectedKpis.forEach(kpi => {
           const thresh = state.kpiThresholds[kpi] || {};
-          const direction = thresh.direction || 'lower_is_worse';
-          const hasTarget = thresh.target !== undefined && thresh.target !== null && !Number.isNaN(Number(thresh.target));
-          const targetVal = hasTarget ? Number(thresh.target) : null;
+          const hasAnyActiveBound = !!thresh.enable && (
+            (!!thresh.showTarget && thresh.target !== undefined && thresh.target !== null && !isNaN(parseFloat(thresh.target))) ||
+            (!!thresh.showWarning && thresh.warning !== undefined && thresh.warning !== null && !isNaN(parseFloat(thresh.warning))) ||
+            (!!thresh.showCritical && thresh.critical !== undefined && thresh.critical !== null && !isNaN(parseFloat(thresh.critical)))
+          );
           let failedDays = 0;
+          let worstSeverity = null;
+          const rank = { critical: 3, warning: 2, target: 1 };
 
           evalTimestamps.forEach(ts => {
             const vals = siteRows.filter(d => d[timeCol] === ts).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
-            if (vals.length === 0 || !hasTarget) { failedDays++; return; }
+            if (vals.length === 0) { failedDays++; return; }
+            if (!hasAnyActiveBound) return; // no active threshold — this KPI isn't evaluable, skip
+
+            // Correctly checks whichever of Target/Warning/Critical are actually turned on, at the
+            // right severity — previously this only ever compared against `target`.
             const dayAvg = vals.reduce((a,b) => a+b, 0) / vals.length;
-            if (direction === 'higher_is_worse' ? dayAvg > targetVal : dayAvg < targetVal) failedDays++;
+            const hit = evaluateSingleValue(dayAvg, thresh);
+            if (hit) {
+              failedDays++;
+              if (!worstSeverity || rank[hit] > rank[worstSeverity]) worstSeverity = hit;
+            }
           });
 
+          if (!hasAnyActiveBound) return; // don't report a KPI with no active threshold as "bad"
+
           if (failedDays > 0) {
+            const rec = getKpiRecommendation(kpi, worstSeverity || 'target');
             badKpis.push({
               kpi,
-              issue: getBadKpiIssueLabel(kpi, direction),
-              targetVal: hasTarget ? targetVal : 'Not Set',
+              issue: getBadKpiIssueLabel(kpi, thresh.direction || 'lower_is_worse'),
+              targetVal: thresh.showTarget && thresh.target != null ? thresh.target
+                       : (thresh.showCritical && thresh.critical != null ? thresh.critical : 'Not Set'),
               failedDays,
-              failedPeriod: `${failedDays}/${evalTimestamps.length}`
+              failedPeriod: `${failedDays}/${evalTimestamps.length}`,
+              technology: rec.technology,
+              diagnosis: rec.diagnosis,
+              actions: rec.actions
             });
           }
         });
@@ -3220,8 +3502,21 @@ a<!DOCTYPE html>
                 <span class="font-black text-white font-mono">🏢 ${r.site}</span>
                 <span class="px-2.5 py-1 rounded-full text-[10px] font-black ${r.badKpis.length ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}">${r.status}</span>
               </div>
-              <div class="mt-2 text-sm font-mono leading-relaxed">
-                ${r.badKpis.length ? r.badKpis.map(k => `<span class="inline-flex items-center gap-1 mr-2 mb-1 px-2 py-1 rounded-lg bg-rose-950/70 border border-rose-800/70 text-rose-300"><span>🔴</span><span class="font-bold">${k.issue}</span><span class="text-rose-400/80">(${k.failedDays} failed day${k.failedDays === 1 ? '' : 's'}, target: ${k.targetVal})</span></span>`).join('') : '<span class="text-emerald-400 font-bold">🟢 No selected KPI failed during the required period.</span>'}
+              <div class="mt-2 text-sm font-mono leading-relaxed space-y-2">
+                ${r.badKpis.length ? r.badKpis.map(k => `
+                  <div class="p-2.5 rounded-lg bg-rose-950/60 border border-rose-800/70 space-y-1.5">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-900/60 border border-rose-700 text-rose-300">
+                        <span>🔴</span><span class="font-bold">${k.issue}</span>
+                      </span>
+                      <span class="text-rose-400/80 text-xs">(${k.failedDays} failed day${k.failedDays === 1 ? '' : 's'}, target: ${k.targetVal})</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded border ${k.technology === 'UNKNOWN' ? 'border-amber-600 text-amber-400' : 'border-cyan-700 text-cyan-300'}">${k.technology === 'UNKNOWN' ? '❔ Tech?' : k.technology}</span>
+                    </div>
+                    <div class="text-[11px] text-slate-300 leading-snug pl-1">
+                      <span class="text-amber-300 font-bold">💡 ${k.diagnosis}.</span> ${k.actions.join('. ')}.
+                    </div>
+                  </div>
+                `).join('') : '<span class="text-emerald-400 font-bold">🟢 No selected KPI failed during the required period.</span>'}
               </div>
             </div>
           `).join('')}
@@ -3356,54 +3651,79 @@ a<!DOCTYPE html>
             <tbody class="divide-y divide-slate-800/60 bg-slate-900/40">
       `;
 
+      // Cached alongside the visual grid so the Export Excel button can dump the same data as plain
+      // status text (colors aren't supported by the free SheetJS build — she'll apply conditional
+      // formatting/colors herself in Excel from this).
+      const heatmapExportRows = [];
+
       targetSites.forEach(site => {
         html += `<tr class="hover:bg-slate-900/80"><td class="p-3 font-bold text-slate-200">${site}</td>`;
+        const exportRow = { 'Site / Object': site };
 
         activeKpis.forEach(kpi => {
           const thresh = state.kpiThresholds[kpi] || {};
-          const hasTarget = thresh.target !== undefined && thresh.target !== null && !Number.isNaN(Number(thresh.target));
-          const direction = thresh.direction || 'lower_is_worse';
-          const targetVal = hasTarget ? Number(thresh.target) : null;
-
-          // Keep the heatmap practical: no metric values, only a health state.
-          if (!hasTarget) {
-            html += `
-              <td class="p-3 text-center">
-                <span title="No threshold set for ${kpi}" class="inline-block w-8 h-8 rounded-md bg-slate-700 border border-slate-600"></span>
-              </td>
-            `;
-            return;
-          }
-
           const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
           const vals = siteRows.map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
-
-          if (vals.length === 0) {
-            html += `
-              <td class="p-3 text-center">
-                <span title="No data available" class="inline-block w-8 h-8 rounded-md bg-slate-700 border border-slate-600"></span>
-              </td>
-            `;
-            return;
-          }
-
           const auditLookback = state.auditLookbackDays || 3;
           const trailingVals = vals.slice(-auditLookback);
-          const checkVal = trailingVals.reduce((a, b) => a + b, 0) / trailingVals.length;
-          const failed = direction === 'higher_is_worse' ? checkVal > targetVal : checkVal < targetVal;
+
+          // Correctly respects Active/show-line toggles and all three bounds (Target/Warning/Critical),
+          // and flags "Not Reporting" for no data / 0% availability — previously this only ever checked
+          // against `target` and ignored whether the threshold was actually turned on.
+          const { status } = evaluateKpiWindow(trailingVals, thresh, kpi);
+
+          const cellStyle = {
+            'OK': 'bg-emerald-500 border border-emerald-400',
+            'Under Threshold': 'bg-rose-600 border border-rose-500 animate-pulse',
+            'Not Reporting': 'bg-black border-2 border-red-600 animate-pulse',
+            'No Threshold Set': 'bg-slate-700 border border-slate-600'
+          }[status] || 'bg-slate-700 border border-slate-600';
 
           html += `
             <td class="p-3 text-center">
-              <span title="${failed ? 'Under Threshold' : 'OK'}" class="inline-block w-8 h-8 rounded-md ${failed ? 'bg-rose-600 border border-rose-500' : 'bg-emerald-500 border border-emerald-400'}"></span>
+              <span title="${kpi}: ${status}" class="inline-block w-8 h-8 rounded-md ${cellStyle}"></span>
             </td>
           `;
+          exportRow[kpi] = status;
         });
 
         html += `</tr>`;
+        heatmapExportRows.push(exportRow);
       });
 
       html += `</tbody></table></div>`;
       el.innerHTML = html;
+
+      state.lastHeatmapData = { rows: heatmapExportRows, kpis: activeKpis, lookbackDays: state.auditLookbackDays || 3 };
+    }
+
+    // Exports the heatmap grid as plain status text (OK / Under Threshold / Not Reporting / No
+    // Threshold Set) — one row per site, one column per KPI. Colors aren't written (the free SheetJS
+    // build used here doesn't support cell fills), so this is meant to be color-coded afterward with
+    // Excel's conditional formatting, which is quick to set up from these exact status strings.
+    function exportHealthHeatmapExcel() {
+      if (!state.lastHeatmapData || !state.lastHeatmapData.rows || state.lastHeatmapData.rows.length === 0) {
+        return alert('Generate the heatmap first (plot KPIs in Step 2, then open Step 4\'s heatmap).');
+      }
+      const { rows, kpis, lookbackDays } = state.lastHeatmapData;
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [{ wch: 22 }, ...kpis.map(() => ({ wch: 20 }))];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Health Heatmap');
+
+      const legendRows = [
+        { 'Status': 'OK', 'Meaning': `Within all active thresholds over the last ${lookbackDays} day(s)` },
+        { 'Status': 'Under Threshold', 'Meaning': 'Breached Target/Warning/Critical at least once in the window' },
+        { 'Status': 'Not Reporting', 'Meaning': 'No data in the window, or 0% availability (likely full outage)' },
+        { 'Status': 'No Threshold Set', 'Meaning': 'This KPI has no active threshold configured in Step 2' }
+      ];
+      const legendWs = XLSX.utils.json_to_sheet(legendRows);
+      legendWs['!cols'] = [{ wch: 20 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, legendWs, 'Legend');
+
+      XLSX.writeFile(wb, `PlootchyNet_Health_Heatmap_${Date.now()}.xlsx`);
     }
 
     function updateHeatmapSiteLabel() {
