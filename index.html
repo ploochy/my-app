@@ -15,6 +15,10 @@
   <!-- jsPDF + AutoTable CDN (used for PDF export of the audit report) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
+  <!-- ExcelJS CDN — used ONLY for the Site Readiness / Bad KPI Analysis exports, since those need
+       per-row cell background colors (highlighting each site), which the SheetJS community build
+       above can't write. Every other export in the app still uses SheetJS/XLSX as before. -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
   <style>
     body {
@@ -447,9 +451,6 @@
             <div class="flex items-center gap-2">
               <button onclick="smartAutoFillThresholds()" title="Auto-suggests Target/Warning/Critical values for any KPI you haven't already configured — never overwrites values you've set" class="px-3 py-1 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 border border-fuchsia-500/40 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5">
                 🪄 Smart Auto-Fill
-              </button>
-              <button onclick="checkPercentScaleIssues()" title="Re-scans loaded data for percentage columns stored as 0–1 fractions (e.g. 0.019 instead of 1.9) and offers to fix them. Safe to run anytime, even after plotting." class="px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5">
-                🔍 Check for %-Scale Issues
               </button>
               <button onclick="saveThresholdConfiguration()" class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold text-[11px] transition-all">
                 💾 Save Thresholds & Cutovers
@@ -1167,32 +1168,6 @@
       return isNaN(num) ? null : num;
     }
 
-    // Dedicated classifier for the fractional-percent check ONLY — deliberately separate from
-    // detectKpiCategory(), because that function buckets "Drop Rate" under the same 'retain' category
-    // as Retainability (fine for recommendation text, since both are call-failure related) — but for
-    // THIS check that's wrong: Retainability is healthy near 100%, while Drop Rate is healthy near 0%.
-    // Reusing the merged category here would flag a perfectly normal 1.5% drop rate as a scale bug.
-    function isNearHundredPercentKpi(kpiName) {
-      const l = kpiName.toLowerCase();
-      if (l.includes('drop')) return false;                                    // healthy near 0%
-      if (l.includes('interfer') || l.includes('noise') || l.includes('rtwp')) return false; // often low %, not near-100
-      if (l.includes('util') || l.includes('load') || l.includes('prb')) return false;        // can legitimately be low
-      if (l.includes('avail') || l.includes('setup') || l.includes('access') || l.includes('csr') || l.includes('cssr') ||
-          l.includes('retain') || l.includes('handover') || l.includes('ho_') || l.includes('hosr') ||
-          l.includes('rate') || l.includes('ratio') || l.includes('success') || l.includes('completion')) return true;
-      return false; // unrecognized pattern — don't guess, skip the fractional check to be safe
-    }
-
-    // "Healthy near 0%" KPIs (Drop Rate) still need SOME fractional check — a genuinely low reading
-    // like 1.2% is completely normal, but a value under this much tighter cutoff (0.05) is far more
-    // likely to be a mis-scaled fraction (0.019 meaning 1.9%) than a real near-perfect 0.019% drop
-    // rate, which essentially never happens in practice. Kept as its own narrow rule, separate from
-    // isNearHundredPercentKpi()'s much wider 1.5 cutoff, specifically so 1–3% normal readings are
-    // never touched.
-    function isNearZeroPercentKpi(kpiName) {
-      return kpiName.toLowerCase().includes('drop');
-    }
-
     // ============================================================
     // SHARED THRESHOLD EVALUATION — single source of truth used by the Step 3 audit table, the
     // heatmap, Site Readiness, and Bad KPI Analysis. Fixes a real bug where those features were
@@ -1247,67 +1222,6 @@
 
       if (!anyActiveBound) return { status: 'No Threshold Set', severity: null };
       return { status: worst ? 'Under Threshold' : 'OK', severity: worst };
-    }
-
-
-    function detectFractionalPercentValues() {
-      const affected = {};
-      state.kpiColumns.forEach(kpi => {
-        if (!kpi.includes('%')) return;
-        let cutoff;
-        if (isNearHundredPercentKpi(kpi)) cutoff = 1.5;
-        else if (isNearZeroPercentKpi(kpi)) cutoff = 0.05;
-        else return; // not an eligible category
-
-        let count = 0;
-        state.dataset.forEach(row => {
-          const v = parseMetricValue(row[kpi], kpi);
-          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= cutoff) count++;
-        });
-        if (count > 0) affected[kpi] = count;
-      });
-      return affected;
-    }
-
-    function rescaleFractionalPercentValues(affected) {
-      Object.keys(affected).forEach(kpi => {
-        const cutoff = isNearHundredPercentKpi(kpi) ? 1.5 : (isNearZeroPercentKpi(kpi) ? 0.05 : 1.5);
-        state.dataset.forEach(row => {
-          const v = parseMetricValue(row[kpi], kpi);
-          if (v !== null && !isNaN(v) && v !== 0 && Math.abs(v) <= cutoff) row[kpi] = v * 100;
-        });
-      });
-    }
-
-    // Re-runnable version of the fractional-percent check — available anytime via the "🔍 Check for
-    // %-Scale Issues" button in Step 2, not just once at upload time. Covers the case where the prompt
-    // was declined earlier, or the data was loaded before this check existed. Refreshes any already-
-    // plotted charts immediately so a fix is visible without needing to re-upload.
-    // silentIfNone: when true, stays quiet if nothing's wrong (used during normal file upload so it
-    // doesn't nag every time); when false/omitted, confirms explicitly that everything looks fine.
-    function checkPercentScaleIssues(silentIfNone) {
-      if (!state.dataset || state.dataset.length === 0) {
-        if (!silentIfNone) alert('Load a data file first — there is no data to check yet.');
-        return;
-      }
-      const fractionalPercentValues = detectFractionalPercentValues();
-      const fractionalPercentCols = Object.keys(fractionalPercentValues);
-      if (fractionalPercentCols.length === 0) {
-        if (!silentIfNone) alert('✓ No scale issues detected — every percentage-named column already looks correctly scaled (0–100).');
-        return;
-      }
-
-      const totalCells = Object.values(fractionalPercentValues).reduce((a, b) => a + b, 0);
-      const detailLines = fractionalPercentCols.map(k => `${k} — ${fractionalPercentValues[k]} cell(s)`).join('\n');
-      const proceed = confirm(
-        `Heads up: ${totalCells} value(s) across ${fractionalPercentCols.length} column(s) are named as percentages but stored as 0–1 fractions instead of 0–100 (e.g. 0.019 instead of 1.9):\n\n${detailLines}\n\nRescale just those affected values ×100? Correctly-scaled values in the same column are left untouched either way.\n\nClick Cancel to keep the file's values exactly as-is.`
-      );
-      if (proceed) {
-        rescaleFractionalPercentValues(fractionalPercentValues);
-        // Rebuild any already-plotted charts so the fix shows up immediately, not just on next upload.
-        if (Object.keys(state.chartInstances || {}).length > 0) renderMultiPlots();
-        alert(`✓ Fixed ${totalCells} value(s) across ${fractionalPercentCols.length} column(s). Any already-plotted charts were refreshed.`);
-      }
     }
 
     function handleFileUpload(e) {
@@ -1418,11 +1332,6 @@
           return parseMetricValue(val, k) !== null;
         });
       });
-
-      // Catch percentage-named columns with individual values stored as raw fractions (0.019 instead
-      // of 1.9) — same check is also available anytime afterward via the "🔍 Check for %-Scale Issues"
-      // button in Step 2, in case this gets declined here or the data was loaded before this existed.
-      checkPercentScaleIssues(true);
 
       state.sites = Array.from(new Set(state.dataset.map(d => String(d[state.siteKey])))).filter(Boolean);
       state.cells = state.cellKey ? Array.from(new Set(state.dataset.map(d => String(d[state.cellKey])))).filter(Boolean) : [];
@@ -3085,12 +2994,46 @@
         requestedDays: lookbackDays,
         siteFilter: selectedSites.length === state.sites.length ? 'ALL' : [...selectedSites],
         selectedKpis: [...selectedKpis],
-        timestamps: [...evalTimestamps]
+        timestamps: [...evalTimestamps],
+        warningHtml: warningHtml
       };
+      state.readinessStatusFilter = 'ALL';
 
-      const totalSites = readinessResults.length;
-      const readyCount = readinessResults.filter(r => r.isReady).length;
+      renderSiteReadinessResults();
+    }
+
+    // Filters the already-computed readiness results by status (All / Ready / Not Ready) without
+    // re-running the check — the "Run Readiness Check" button still recomputes from scratch.
+    function filterSiteReadinessByStatus(status) {
+      state.readinessStatusFilter = status;
+      renderSiteReadinessResults();
+    }
+
+    function renderSiteReadinessResults() {
+      const container = document.getElementById('siteReadinessContainer');
+      if (!container) return;
+      const allResults = state.lastReadinessResults || [];
+      if (allResults.length === 0) return;
+
+      const meta = state.lastReadinessMeta || {};
+      const evalTimestamps = meta.timestamps || [];
+      const lookbackDays = meta.lookbackDays || 7;
+      const warningHtml = meta.warningHtml || '';
+
+      const statusFilter = state.readinessStatusFilter || 'ALL';
+      const readinessResults = statusFilter === 'READY' ? allResults.filter(r => r.isReady)
+                              : statusFilter === 'NOT_READY' ? allResults.filter(r => !r.isReady)
+                              : allResults;
+
+      const totalSites = allResults.length;
+      const readyCount = allResults.filter(r => r.isReady).length;
       const notReadyCount = totalSites - readyCount;
+
+      const filterBtnClass = (val) => `px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+        statusFilter === val
+          ? 'bg-emerald-500/30 border-emerald-400 text-emerald-200'
+          : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-emerald-600'
+      }`;
 
       let html = `
         <div class="space-y-4">
@@ -3110,8 +3053,15 @@
             </div>
           </div>
 
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] text-slate-400 font-bold">Show:</span>
+            <button onclick="filterSiteReadinessByStatus('ALL')" class="${filterBtnClass('ALL')}">All (${totalSites})</button>
+            <button onclick="filterSiteReadinessByStatus('READY')" class="${filterBtnClass('READY')}">✅ Ready (${readyCount})</button>
+            <button onclick="filterSiteReadinessByStatus('NOT_READY')" class="${filterBtnClass('NOT_READY')}">❌ Not Ready (${notReadyCount})</button>
+          </div>
+
           <div class="space-y-3">
-            ${readinessResults.map(res => `
+            ${readinessResults.length === 0 ? `<div class="text-xs text-slate-500 font-mono italic p-4 text-center">No sites match this filter.</div>` : readinessResults.map(res => `
               <div class="p-4 bg-slate-950/80 border ${res.isReady ? 'border-emerald-500/40' : 'border-rose-500/40'} rounded-xl space-y-3">
                 <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
                   <div class="flex items-center gap-2">
@@ -3165,111 +3115,227 @@
       container.innerHTML = html;
     }
 
-    function exportSiteReadinessExcel() {
+    // A palette of distinct, readable background colors used to color-code each site's rows in Excel
+    // exports (ARGB hex). Cycles if there are more sites than colors, so it still works for large lists.
+    const SITE_COLOR_PALETTE = [
+      'FFD1E8FF', 'FFFFE8D1', 'FFD1FFDC', 'FFFFD1E0', 'FFE8D1FF',
+      'FFD1FFF5', 'FFFFF3D1', 'FFD1E0FF', 'FFFFD1D1', 'FFE0FFD1',
+      'FFD1F0FF', 'FFF5D1FF', 'FFFFEBD1', 'FFD1FFEB', 'FFFFD1F0'
+    ];
+    function getSiteColorMap(sites) {
+      const map = {};
+      sites.forEach((site, i) => { map[site] = SITE_COLOR_PALETTE[i % SITE_COLOR_PALETTE.length]; });
+      return map;
+    }
+    function styleHeaderRow(row) {
+      row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+    }
+    async function downloadWorkbook(workbook, filename) {
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    async function exportSiteReadinessExcel() {
       if (!state.lastReadinessResults || state.lastReadinessResults.length === 0) {
         return alert('Run the Site Readiness Check before exporting.');
       }
+      if (!window.ExcelJS) return alert('Excel export library failed to load — check your internet connection and try again.');
 
       const meta = state.lastReadinessMeta || {};
+      const sites = state.lastReadinessResults.map(r => r.site);
+      const colorMap = getSiteColorMap(sites);
 
-      // SUMMARY SHEET — one row per site, with the final verdict in a single column. This is the sheet
-      // you'd hand to a customer/stakeholder: no need to scan multiple KPI rows to find the verdict.
-      const summaryRows = state.lastReadinessResults.map(result => {
+      const workbook = new ExcelJS.Workbook();
+
+      // SUMMARY SHEET — one row per site, color-coded, with the final verdict in a single column.
+      const summarySheet = workbook.addWorksheet('Readiness Summary');
+      summarySheet.columns = [
+        { header: 'Site / Object', key: 'site', width: 22 },
+        { header: 'Final Verdict', key: 'verdict', width: 22 },
+        { header: 'KPIs Passed', key: 'passed', width: 14 },
+        { header: 'Failed KPIs', key: 'failed', width: 45 },
+        { header: 'Requested Period (Days)', key: 'reqDays', width: 22 },
+        { header: 'Evaluated Days', key: 'evalDays', width: 16 }
+      ];
+      styleHeaderRow(summarySheet.getRow(1));
+
+      state.lastReadinessResults.forEach(result => {
         const totalKpis = result.kpiEvaluations.length;
         const passedKpis = result.kpiEvaluations.filter(k => k.isOk).length;
         const failedKpiNames = result.kpiEvaluations.filter(k => !k.isOk).map(k => k.kpi);
-        return {
-          'Site / Object': result.site,
-          'Final Verdict': result.isReady ? 'READY FOR ACCEPTANCE' : 'NOT READY',
-          'KPIs Passed': `${passedKpis} / ${totalKpis}`,
-          'Failed KPIs': failedKpiNames.length > 0 ? failedKpiNames.join(', ') : '—',
-          'Requested Period (Days)': meta.requestedDays ?? '',
-          'Evaluated Days': meta.evaluatedDays ?? ''
-        };
+        const row = summarySheet.addRow({
+          site: result.site,
+          verdict: result.isReady ? 'READY FOR ACCEPTANCE' : 'NOT READY',
+          passed: `${passedKpis} / ${totalKpis}`,
+          failed: failedKpiNames.length > 0 ? failedKpiNames.join(', ') : '—',
+          reqDays: meta.requestedDays ?? '',
+          evalDays: meta.evaluatedDays ?? ''
+        });
+        const color = colorMap[result.site];
+        row.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }; });
+        row.getCell('verdict').font = { bold: true, color: { argb: result.isReady ? 'FF065F46' : 'FF991B1B' } };
       });
 
-      // DETAIL SHEET — one row per site × KPI, for anyone who wants the full breakdown.
-      const detailRows = [];
+      // DETAIL SHEET — one row per site × KPI, same color-coding.
+      const detailSheet = workbook.addWorksheet('KPI Detail');
+      detailSheet.columns = [
+        { header: 'Site / Object', key: 'site', width: 22 },
+        { header: 'KPI Metric', key: 'kpi', width: 36 },
+        { header: 'Required Target', key: 'target', width: 16 },
+        { header: 'Failed Days', key: 'failedDays', width: 12 },
+        { header: 'KPI Status', key: 'status', width: 12 },
+        { header: 'Final Site Verdict', key: 'verdict', width: 20 },
+        { header: 'Requested Period (Days)', key: 'reqDays', width: 22 },
+        { header: 'Evaluated Days', key: 'evalDays', width: 16 }
+      ];
+      styleHeaderRow(detailSheet.getRow(1));
+
       state.lastReadinessResults.forEach(result => {
+        const color = colorMap[result.site];
         result.kpiEvaluations.forEach(k => {
-          detailRows.push({
-            'Site / Object': result.site,
-            'KPI Metric': k.kpi,
-            'Required Target': k.targetVal,
-            'Failed Days': k.failedDays,
-            'KPI Status': k.isOk ? 'PASS' : 'FAIL',
-            'Final Site Verdict': result.isReady ? 'READY FOR ACCEPTANCE' : 'NOT READY',
-            'Requested Period (Days)': meta.requestedDays ?? '',
-            'Evaluated Days': meta.evaluatedDays ?? ''
+          const row = detailSheet.addRow({
+            site: result.site,
+            kpi: k.kpi,
+            target: k.targetVal,
+            failedDays: k.failedDays,
+            status: k.isOk ? 'PASS' : 'FAIL',
+            verdict: result.isReady ? 'READY FOR ACCEPTANCE' : 'NOT READY',
+            reqDays: meta.requestedDays ?? '',
+            evalDays: meta.evaluatedDays ?? ''
           });
+          row.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }; });
         });
       });
 
-      const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
-      summaryWs['!cols'] = [{ wch: 22 }, { wch: 20 }, { wch: 14 }, { wch: 40 }, { wch: 22 }, { wch: 16 }];
-
-      const detailWs = XLSX.utils.json_to_sheet(detailRows);
-      detailWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 22 }, { wch: 16 }];
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Readiness Summary');
-      XLSX.utils.book_append_sheet(wb, detailWs, 'KPI Detail');
-      XLSX.writeFile(wb, `PlootchyNet_Site_Readiness_${Date.now()}.xlsx`);
+      await downloadWorkbook(workbook, `PlootchyNet_Site_Readiness_${Date.now()}.xlsx`);
     }
 
     // "Each site with a list of the degraded KPIs" — one row per site, degraded KPIs listed together
     // (with their failed-day counts), plus a detail sheet for anyone who wants the full breakdown.
-    function exportBadKpiAnalysisExcel() {
+    async function exportBadKpiAnalysisExcel() {
       if (!state.badKpiResults || state.badKpiResults.length === 0) {
         return alert('Run "Analyze Bad KPIs" before exporting.');
       }
+      if (!window.ExcelJS) return alert('Excel export library failed to load — check your internet connection and try again.');
 
       const meta = state.badKpiMeta || {};
+      const sites = state.badKpiResults.map(r => r.site);
+      const colorMap = getSiteColorMap(sites);
 
-      const summaryRows = state.badKpiResults.map(r => ({
-        'Site / Object': r.site,
-        'Status': r.status,
-        'Degraded KPI Count': r.badKpis.length,
-        'Degraded KPIs': r.badKpis.length > 0
-          ? r.badKpis.map(k => `${k.kpi} (${k.failedPeriod} days, target: ${k.targetVal})`).join('; ')
-          : '—',
-        'Requested Period (Days)': meta.requestedDays ?? '',
-        'Evaluated Days': meta.evaluatedDays ?? ''
-      }));
+      const CATEGORY_LABELS = {
+        access: 'Access / Setup', handover: 'Handover', retain: 'Drop / Retain', avail: 'Availability',
+        cqi: 'CQI / Quality', interference: 'Interference', latency: 'Latency', util: 'PRB / Utilization',
+        thp: 'Throughput', traffic: 'Traffic / Volume', generic: 'Other'
+      };
+      const CATEGORY_ORDER = ['avail', 'access', 'handover', 'retain', 'cqi', 'interference', 'latency', 'util', 'thp', 'traffic', 'generic'];
 
-      const detailRows = [];
+      // Only include categories that actually have at least one degraded KPI somewhere, in a fixed order.
+      const presentCategories = new Set();
+      state.badKpiResults.forEach(r => r.badKpis.forEach(k => presentCategories.add(k.category || 'generic')));
+      const categoriesToShow = CATEGORY_ORDER.filter(c => presentCategories.has(c));
+
+      const workbook = new ExcelJS.Workbook();
+
+      // BY CATEGORY SHEET (wide/pivot format) — one row per site, one column per KPI category. Sort or
+      // filter any single category column across every site to find everyone sharing that same issue.
+      if (categoriesToShow.length > 0) {
+        const categorySheet = workbook.addWorksheet('Bad KPIs by Category');
+        categorySheet.columns = [
+          { header: 'Site / Object', key: 'site', width: 22 },
+          ...categoriesToShow.map(c => ({ header: CATEGORY_LABELS[c] || c, key: c, width: 30 })),
+          { header: 'Overall Status', key: 'status', width: 20 }
+        ];
+        styleHeaderRow(categorySheet.getRow(1));
+
+        state.badKpiResults.forEach(r => {
+          const rowData = { site: r.site, status: r.status };
+          categoriesToShow.forEach(cat => {
+            const kpisInCat = r.badKpis.filter(k => (k.category || 'generic') === cat);
+            rowData[cat] = kpisInCat.length > 0 ? kpisInCat.map(k => `${k.kpi} (${k.failedPeriod})`).join(' | ') : 'OK';
+          });
+          const row = categorySheet.addRow(rowData);
+          const color = colorMap[r.site];
+          row.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }; });
+          categoriesToShow.forEach(cat => {
+            const cell = row.getCell(cat);
+            if (cell.value !== 'OK') cell.font = { bold: true, color: { argb: 'FF991B1B' } };
+          });
+        });
+      }
+
+      // SUMMARY SHEET — one row per site, degraded KPIs listed together, color-coded per site.
+      const summarySheet = workbook.addWorksheet('Bad KPIs by Site');
+      summarySheet.columns = [
+        { header: 'Site / Object', key: 'site', width: 22 },
+        { header: 'Status', key: 'status', width: 18 },
+        { header: 'Degraded KPI Count', key: 'count', width: 18 },
+        { header: 'Degraded KPIs', key: 'kpis', width: 60 },
+        { header: 'Requested Period (Days)', key: 'reqDays', width: 22 },
+        { header: 'Evaluated Days', key: 'evalDays', width: 16 }
+      ];
+      styleHeaderRow(summarySheet.getRow(1));
+      state.badKpiResults.forEach(r => {
+        const row = summarySheet.addRow({
+          site: r.site,
+          status: r.status,
+          count: r.badKpis.length,
+          kpis: r.badKpis.length > 0 ? r.badKpis.map(k => `${k.kpi} (${k.failedPeriod} days, target: ${k.targetVal})`).join('; ') : '—',
+          reqDays: meta.requestedDays ?? '',
+          evalDays: meta.evaluatedDays ?? ''
+        });
+        const color = colorMap[r.site];
+        row.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }; });
+      });
+
+      // DETAIL SHEET — one row per site × degraded KPI, color-coded per site.
+      const detailSheet = workbook.addWorksheet('Degraded KPI Detail');
+      detailSheet.columns = [
+        { header: 'Site / Object', key: 'site', width: 22 },
+        { header: 'Degraded KPI', key: 'kpi', width: 36 },
+        { header: 'Category', key: 'category', width: 18 },
+        { header: 'Technology', key: 'tech', width: 10 },
+        { header: 'Issue', key: 'issue', width: 30 },
+        { header: 'Required Target', key: 'target', width: 16 },
+        { header: 'Failed Days', key: 'failedDays', width: 12 },
+        { header: 'Failed / Evaluated Period', key: 'period', width: 20 },
+        { header: 'Diagnosis', key: 'diagnosis', width: 45 },
+        { header: 'Recommended Actions', key: 'actions', width: 60 },
+        { header: 'Requested Period (Days)', key: 'reqDays', width: 22 },
+        { header: 'Evaluated Days', key: 'evalDays', width: 16 }
+      ];
+      styleHeaderRow(detailSheet.getRow(1));
       state.badKpiResults.forEach(r => {
         if (r.badKpis.length === 0) return;
+        const color = colorMap[r.site];
         r.badKpis.forEach(k => {
-          detailRows.push({
-            'Site / Object': r.site,
-            'Degraded KPI': k.kpi,
-            'Technology': k.technology || 'UNKNOWN',
-            'Issue': k.issue,
-            'Required Target': k.targetVal,
-            'Failed Days': k.failedDays,
-            'Failed / Evaluated Period': k.failedPeriod,
-            'Diagnosis': k.diagnosis || '',
-            'Recommended Actions': (k.actions || []).join(' | '),
-            'Requested Period (Days)': meta.requestedDays ?? '',
-            'Evaluated Days': meta.evaluatedDays ?? ''
+          const row = detailSheet.addRow({
+            site: r.site,
+            kpi: k.kpi,
+            category: CATEGORY_LABELS[k.category] || k.category || '',
+            tech: k.technology || 'UNKNOWN',
+            issue: k.issue,
+            target: k.targetVal,
+            failedDays: k.failedDays,
+            period: k.failedPeriod,
+            diagnosis: k.diagnosis || '',
+            actions: (k.actions || []).join(' | '),
+            reqDays: meta.requestedDays ?? '',
+            evalDays: meta.evaluatedDays ?? ''
           });
+          row.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }; });
         });
       });
 
-      const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
-      summaryWs['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 60 }, { wch: 22 }, { wch: 16 }];
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Bad KPIs by Site');
-
-      if (detailRows.length > 0) {
-        const detailWs = XLSX.utils.json_to_sheet(detailRows);
-        detailWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 45 }, { wch: 60 }, { wch: 22 }, { wch: 16 }];
-        XLSX.utils.book_append_sheet(wb, detailWs, 'Degraded KPI Detail');
-      }
-
-      XLSX.writeFile(wb, `PlootchyNet_Bad_KPI_Analysis_${Date.now()}.xlsx`);
+      await downloadWorkbook(workbook, `PlootchyNet_Bad_KPI_Analysis_${Date.now()}.xlsx`);
     }
 
     function updateReadinessSiteLabel() {
@@ -3474,6 +3540,7 @@
             const rec = getKpiRecommendation(kpi, worstSeverity || 'target');
             badKpis.push({
               kpi,
+              category: detectKpiCategory(kpi),
               issue: getBadKpiIssueLabel(kpi, thresh.direction || 'lower_is_worse'),
               targetVal: thresh.showTarget && thresh.target != null ? thresh.target
                        : (thresh.showCritical && thresh.critical != null ? thresh.critical : 'Not Set'),
