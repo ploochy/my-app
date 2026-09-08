@@ -397,6 +397,10 @@
                     <button onclick="toggleSelectAllBatchCells(false)" class="text-purple-400 hover:underline font-bold">Unselect All</button>
                   </div>
                 </div>
+                <!-- Cell Search Input -->
+                <div class="mb-2">
+                  <input type="text" id="batchCellSearch" placeholder="🔍 Search cell..." onkeyup="filterBatchCellList()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-purple-500 focus:outline-none font-mono">
+                </div>
                 <div id="batchCellCheckboxes" class="space-y-1 text-[11px]"></div>
               </div>
             </div>
@@ -774,6 +778,18 @@
             </div>
           </div>
 
+          <!-- ANALYSIS GRANULARITY: SITE vs CELL -->
+          <div class="flex items-center gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+            <span class="text-[11px] font-bold text-emerald-400">Analyze by:</span>
+            <button onclick="setReadinessGranularity('SITE')" id="readinessGranularitySiteBtn" class="px-3 py-1 rounded-lg text-[11px] font-bold border transition-all bg-emerald-500/30 border-emerald-400 text-emerald-200">
+              🏢 Site Level
+            </button>
+            <button onclick="setReadinessGranularity('CELL')" id="readinessGranularityCellBtn" class="px-3 py-1 rounded-lg text-[11px] font-bold border transition-all bg-slate-950 border-slate-700 text-slate-400 hover:border-emerald-600">
+              📡 Cell Level
+            </button>
+            <span class="text-[10px] text-slate-500">Cell Level evaluates each cell individually instead of averaging all of a site's cells together — useful for 2G/3G where one bad cell can hide behind good ones.</span>
+          </div>
+
           <!-- READINESS REPORT DISPLAY -->
           <div id="siteReadinessContainer" class="text-xs text-slate-500 font-mono italic">
             Import dataset in Step 1 and click 'Run Readiness Check' above to verify site acceptance status.
@@ -847,6 +863,19 @@
               </div>
             </div>
           </div>
+
+          <!-- ANALYSIS GRANULARITY: SITE vs CELL -->
+          <div class="flex items-center gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+            <span class="text-[11px] font-bold text-rose-400">Analyze by:</span>
+            <button onclick="setBadKpiGranularity('SITE')" id="badKpiGranularitySiteBtn" class="px-3 py-1 rounded-lg text-[11px] font-bold border transition-all bg-rose-500/30 border-rose-400 text-rose-200">
+              🏢 Site Level
+            </button>
+            <button onclick="setBadKpiGranularity('CELL')" id="badKpiGranularityCellBtn" class="px-3 py-1 rounded-lg text-[11px] font-bold border transition-all bg-slate-950 border-slate-700 text-slate-400 hover:border-rose-600">
+              📡 Cell Level
+            </button>
+            <span class="text-[10px] text-slate-500">Cell Level checks each cell individually instead of averaging a site's cells together.</span>
+          </div>
+
           <div id="badKpiAnalysisContainer" class="text-xs text-slate-500 font-mono italic">Select sites and KPIs, choose the required consecutive-day period, then run the analysis.</div>
         </div>
       </div>
@@ -1042,12 +1071,14 @@
       readinessSiteFilter: 'ALL',
       readinessSelectedSites: null,
       readinessSelectedKpis: null,
+      readinessGranularity: 'SITE',
       lastReadinessResults: [],
       lastReadinessMeta: null,
 
       // Bad KPI Analysis state
       badKpiSelectedSites: null,
       badKpiSelectedKpis: null,
+      badKpiGranularity: 'SITE',
       badKpiResults: [],
       badKpiMeta: null,
 
@@ -1169,6 +1200,106 @@
     }
 
     // ============================================================
+    // PERCENT-SCALE CORRECTION — two layers, both applied only at file-load time (never re-run later,
+    // never touches values you type or edit in the app):
+    //
+    // LAYER 1 (certain, no guessing): if Excel's own cell format for a column says "Percentage"
+    // (format code or displayed text contains '%'), the file's raw stored number for that column is
+    // mathematically GUARANTEED to be the fraction (e.g. a cell showing "98.99%" always stores 0.9899
+    // internally — that's a hard rule of how Excel's data model works, not an assumption). When this
+    // format flag is present, we scale ×100 with total certainty.
+    //
+    // LAYER 2 (narrow fallback, only for CSV/JSON or files with no format metadata at all): some NMS/OSS
+    // exports drop Excel's percentage formatting entirely and just write a plain decimal — nothing in
+    // the file signals it needs scaling. For THAT case, we fall back to a name+range check, but only for
+    // KPI types that are essentially always near 100% in a real network (Availability, Success Rate,
+    // Access/Setup, Handover, Retainability) — never Drop Rate, Interference, PRB/Utilization, or
+    // anything else where a small value is a normal, healthy reading. For those excluded categories, a
+    // low value is left completely alone — this fallback only fires where a raw value near 1 would be
+    // essentially impossible as a genuine reading (a real "0.5% Handover Success Rate" would mean the
+    // network is almost completely down).
+    // ============================================================
+    function isNearHundredPercentKpiName(kpiName) {
+      const l = (kpiName || '').toLowerCase();
+      if (l.includes('drop')) return false;                                        // healthy near 0%
+      if (l.includes('interfer') || l.includes('noise') || l.includes('rtwp')) return false; // often legitimately low
+      if (l.includes('util') || l.includes('load') || l.includes('prb')) return false;        // can legitimately be low
+      if (l.includes('avail') || l.includes('valid') ||
+          l.includes('setup') || l.includes('access') || l.includes('csr') || l.includes('cssr') ||
+          l.includes('retain') || l.includes('handover') || l.includes('ho_') || l.includes('hosr') ||
+          l.includes('success') || l.includes('completion')) return true;
+      return false; // anything not explicitly recognized is left alone — never guessed
+    }
+
+    // Reads Excel's own cell number-format codes (and, as a backup, the pre-computed display text)
+    // directly from the worksheet — this is Layer 1, ground truth from the file itself.
+    function getPercentFormattedColumns(worksheet) {
+      const percentCols = new Set();
+      if (!worksheet || !worksheet['!ref']) return percentCols;
+      try {
+        const range = XLSX.utils.decode_range(worksheet['!ref']);
+        const headerRow = range.s.r;
+
+        const colNameByIndex = {};
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const cell = worksheet[XLSX.utils.encode_cell({ r: headerRow, c })];
+          if (cell && cell.v !== undefined && cell.v !== null && cell.v !== '') colNameByIndex[c] = String(cell.v);
+        }
+
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const colName = colNameByIndex[c];
+          if (!colName) continue;
+          let checked = 0, percentFormatted = 0;
+          for (let r = headerRow + 1; r <= range.e.r; r++) {
+            const cell = worksheet[XLSX.utils.encode_cell({ r, c })];
+            if (!cell || cell.v === undefined || cell.v === null || cell.v === '' || typeof cell.v !== 'number') continue;
+            checked++;
+            const zHasPercent = cell.z && typeof cell.z === 'string' && cell.z.includes('%');
+            const wHasPercent = cell.w && typeof cell.w === 'string' && cell.w.includes('%');
+            if (zHasPercent || wHasPercent) percentFormatted++;
+            if (checked >= 50) break;
+          }
+          if (checked > 0 && percentFormatted / checked > 0.7) percentCols.add(colName);
+        }
+      } catch (err) {
+        // Malformed range or unexpected sheet structure — fail safe by treating nothing as percent-formatted.
+      }
+      return percentCols;
+    }
+
+    // Layer 2: for columns NOT caught by Layer 1 (no Excel format metadata present at all — typically
+    // CSV/JSON, or an XLSX exported without preserving formatting), catches the narrow, low-risk case of
+    // a near-100%-type KPI whose values are suspiciously all in the 0–1.5 range.
+    function getFallbackPercentColumns(dataset, kpiColumns, alreadyHandledColumns) {
+      const percentCols = new Set();
+      kpiColumns.forEach(kpi => {
+        if (alreadyHandledColumns.has(kpi)) return; // Layer 1 already resolved this column with certainty
+        if (!isNearHundredPercentKpiName(kpi)) return;
+        let checked = 0, suspicious = 0;
+        for (let i = 0; i < dataset.length; i++) {
+          const v = parseMetricValue(dataset[i][kpi], kpi);
+          if (v === null || v === 0) continue;
+          checked++;
+          if (Math.abs(v) <= 1.5) suspicious++;
+          if (checked >= 50) break;
+        }
+        if (checked > 0 && suspicious / checked > 0.7) percentCols.add(kpi);
+      });
+      return percentCols;
+    }
+
+    // Applies the ×100 correction to a given set of column names, in place.
+    function applyPercentScaling(dataset, percentColumns) {
+      if (!percentColumns || percentColumns.size === 0) return;
+      dataset.forEach(row => {
+        percentColumns.forEach(col => {
+          const v = row[col];
+          if (typeof v === 'number') row[col] = v * 100;
+        });
+      });
+    }
+
+    // ============================================================
     // SHARED THRESHOLD EVALUATION — single source of truth used by the Step 3 audit table, the
     // heatmap, Site Readiness, and Bad KPI Analysis. Fixes a real bug where those features were
     // comparing values only against `target` (ignoring warning/critical), and — critically — ignoring
@@ -1228,6 +1359,8 @@
       const file = e.target.files[0];
       if (!file) return;
 
+      state._pendingPercentColumns = null; // reset so a JSON/CSV upload never inherits a stale XLSX result
+
       const ext = file.name.split('.').pop().toLowerCase();
       state.fileType = ext.toUpperCase();
 
@@ -1257,7 +1390,10 @@
             const data = new Uint8Array(evt.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            state.dataset = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
+            // raw:true reads each cell's exact underlying value ourselves — see the percent-scale
+            // correction comments above parseMetricValue for what happens next and why.
+            state.dataset = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: "" });
+            state._pendingPercentColumns = getPercentFormattedColumns(worksheet);
             processParsedData();
           } catch (err) { alert('Error parsing spreadsheet file.'); }
         };
@@ -1332,6 +1468,16 @@
           return parseMetricValue(val, k) !== null;
         });
       });
+
+      // Apply the percent-scale correction now that kpiColumns is known (Layer 1 = Excel format
+      // metadata, computed earlier in the upload handler where the raw worksheet is available; Layer 2
+      // = narrow name+range fallback for columns Layer 1 couldn't resolve, e.g. CSV/JSON with no
+      // format metadata at all). See the functions' own comments for exactly what each layer covers.
+      const layer1Cols = state._pendingPercentColumns || new Set();
+      applyPercentScaling(state.dataset, layer1Cols);
+      const layer2Cols = getFallbackPercentColumns(state.dataset, state.kpiColumns, layer1Cols);
+      applyPercentScaling(state.dataset, layer2Cols);
+      state._pendingPercentColumns = null; // one-time use per upload — never re-applied later
 
       state.sites = Array.from(new Set(state.dataset.map(d => String(d[state.siteKey])))).filter(Boolean);
       state.cells = state.cellKey ? Array.from(new Set(state.dataset.map(d => String(d[state.cellKey])))).filter(Boolean) : [];
@@ -1657,18 +1803,17 @@
     }
 
     function filterBatchSiteList() {
-      const term = document.getElementById('batchSiteSearch').value.toLowerCase();
-      const items = document.querySelectorAll('.batch-site-item');
-      items.forEach(item => {
-        const text = item.textContent.toLowerCase();
-        if (text.includes(term)) item.classList.remove('hidden');
-        else item.classList.add('hidden');
-      });
+      filterListByCommaSearch('batchSiteSearch', '.batch-site-item');
+    }
+
+    function filterBatchCellList() {
+      filterListByCommaSearch('batchCellSearch', '.batch-cell-item');
     }
 
     function toggleSelectAllBatchSites(selectAll) {
       if (selectAll) state.globalBatchSites = ['ALL'];
       else state.globalBatchSites = [];
+      state.globalBatchCells = ['ALL']; // reset so the newly-selected site(s)' cells are all pre-checked
       renderBatchSiteCheckboxes();
       if (!state.isSiteLevelOnly) renderBatchCellCheckboxes();
     }
@@ -1710,6 +1855,10 @@
         if (state.globalBatchSites.includes(site)) state.globalBatchSites = state.globalBatchSites.filter(s => s !== site);
         else state.globalBatchSites.push(site);
       }
+      // The site selection changed — reset cells to "all" so the newly relevant site(s)' cells are all
+      // pre-checked by default (2G/3G cell IDs are unique per site, so leaving stale cell picks from a
+      // previous site selection would show the wrong/empty set instead of the new site's actual cells).
+      state.globalBatchCells = ['ALL'];
       renderBatchSiteCheckboxes();
       if (!state.isSiteLevelOnly) renderBatchCellCheckboxes();
     }
@@ -1727,13 +1876,13 @@
       const isAllChecked = state.globalBatchCells.includes('ALL');
 
       container.innerHTML = `
-        <label class="flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
+        <label class="batch-cell-item flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
           <input type="checkbox" value="ALL" ${isAllChecked ? 'checked' : ''} onchange="onBatchCellToggle('ALL')" class="rounded bg-slate-900 border-slate-700 text-purple-400 focus:ring-0">
           <span class="font-bold text-purple-300">All Cells</span>
         </label>
         <div class="border-t border-slate-800 my-1"></div>
       ` + availableCells.map(c => `
-        <label class="flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
+        <label class="batch-cell-item flex items-center gap-2 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-slate-900">
           <input type="checkbox" value="${c}" ${isAllChecked || state.globalBatchCells.includes(c) ? 'checked' : ''} onchange="onBatchCellToggle('${c}')" class="rounded bg-slate-900 border-slate-700 text-purple-400 focus:ring-0">
           <span>Cell ${c}</span>
         </label>
@@ -1775,14 +1924,28 @@
       document.getElementById('appModal').classList.add('hidden');
     }
 
-    function filterModalSiteList() {
-      const term = document.getElementById('modalSiteSearch').value.toLowerCase();
-      const items = document.querySelectorAll('.modal-site-item');
+    // Generic search filter supporting comma-separated multi-term search (OR logic) — e.g. typing
+    // "LAN0306, LAL3116" shows any item matching either term. Shared by every "search a list of
+    // sites/cells" box in the app so the behavior is consistent everywhere.
+    function filterListByCommaSearch(inputId, itemSelector) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const raw = input.value.toLowerCase();
+      const terms = raw.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      const items = document.querySelectorAll(itemSelector);
       items.forEach(item => {
         const text = item.textContent.toLowerCase();
-        if (text.includes(term)) item.classList.remove('hidden');
-        else item.classList.add('hidden');
+        const matches = terms.length === 0 || terms.some(term => text.includes(term));
+        item.classList.toggle('hidden', !matches);
       });
+    }
+
+    function filterModalSiteList() {
+      filterListByCommaSearch('modalSiteSearch', '.modal-site-item');
+    }
+
+    function filterModalCellList() {
+      filterListByCommaSearch('modalCellSearch', '.modal-cell-item');
     }
 
     function filterModalPairTable() {
@@ -1795,6 +1958,39 @@
       });
     }
 
+    // Builds the cell checkbox grid HTML for a given list of cell IDs — all checked by default.
+    // Shared by the modal's initial render and by refreshModalCellSection() when the site selection
+    // changes, so both stay perfectly consistent.
+    function buildModalCellCheckboxesHtml(cellList) {
+      return cellList.map(c => `
+        <label class="modal-cell-item flex items-center gap-2.5 p-2 bg-slate-900 border border-slate-800 rounded-xl hover:border-purple-500/50 cursor-pointer">
+          <input type="checkbox" value="${c}" class="modal-cell-checkbox rounded border-slate-700 bg-slate-950 text-purple-500 focus:ring-0" checked>
+          <span class="text-xs font-bold text-slate-200">Cell ${c}</span>
+        </label>
+      `).join('');
+    }
+
+    // Re-derives the cell list from whichever sites are currently checked, so the cell list always
+    // reflects only the cells that actually belong to the selected site(s) — critical for 2G/3G where
+    // cell IDs are unique per site (not small shared numbers like 4G sectors) and a flat unfiltered
+    // list would be unusable. All matching cells are checked by default; the person can still uncheck
+    // individual ones. If no site is checked yet, or every site is checked, shows the full cell list.
+    function refreshModalCellSection() {
+      const grid = document.getElementById('modalCellGrid');
+      if (!grid || state.isSiteLevelOnly) return;
+
+      const checkedSites = Array.from(document.querySelectorAll('.modal-site-checkbox:checked')).map(cb => cb.value);
+      let availableCells = state.cells;
+      if (checkedSites.length > 0 && checkedSites.length < state.sites.length) {
+        const filteredRows = state.dataset.filter(d => checkedSites.includes(String(d[state.siteKey])));
+        availableCells = Array.from(new Set(filteredRows.map(d => String(d[state.cellKey])))).filter(Boolean);
+      }
+
+      grid.innerHTML = buildModalCellCheckboxesHtml(availableCells);
+      const search = document.getElementById('modalCellSearch');
+      if (search) search.value = ''; // the cell list just changed — any stale filter term no longer applies
+    }
+
     function openAdjustObjectsModal() {
       const selectedIds = getCheckedChartIds();
       if (selectedIds.length === 0) return alert('Please select at least one chart card using card checkboxes first.');
@@ -1803,28 +1999,24 @@
       
       const siteOptionsHtml = state.sites.map(s => `
         <label class="modal-site-item flex items-center gap-2.5 p-2 bg-slate-900 border border-slate-800 rounded-xl hover:border-pink-500/50 cursor-pointer">
-          <input type="checkbox" value="${s}" class="modal-site-checkbox rounded border-slate-700 bg-slate-950 text-pink-500 focus:ring-0" checked>
+          <input type="checkbox" value="${s}" onchange="refreshModalCellSection()" class="modal-site-checkbox rounded border-slate-700 bg-slate-950 text-pink-500 focus:ring-0" checked>
           <span class="text-xs font-bold text-slate-200">${s}</span>
         </label>
       `).join('');
 
       const cellSectionHtml = state.isSiteLevelOnly ? '' : `
         <div class="space-y-2">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <label class="text-xs font-black text-purple-300">Select Target Cells:</label>
-            <div class="flex gap-2 text-[11px]">
-              <button onclick="document.querySelectorAll('.modal-cell-checkbox').forEach(c=>c.checked=true)" class="text-purple-400 font-bold hover:underline">Select All</button>
-              <span class="text-slate-600">|</span>
-              <button onclick="document.querySelectorAll('.modal-cell-checkbox').forEach(c=>c.checked=false)" class="text-purple-400 font-bold hover:underline">Unselect All</button>
+            <div class="flex items-center gap-2">
+              <input type="text" id="modalCellSearch" placeholder="🔍 Search cell..." onkeyup="filterModalCellList()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white focus:border-purple-500 focus:outline-none font-mono">
+              <button onclick="document.querySelectorAll('.modal-cell-checkbox').forEach(c=>c.checked=true)" class="text-purple-400 text-[11px] font-bold hover:underline">Select All</button>
+              <span class="text-slate-600 text-[11px]">|</span>
+              <button onclick="document.querySelectorAll('.modal-cell-checkbox').forEach(c=>c.checked=false)" class="text-purple-400 text-[11px] font-bold hover:underline">Unselect All</button>
             </div>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto custom-scrollbar p-1 border border-slate-800/80 rounded-xl bg-slate-950/50">
-            ${state.cells.map(c => `
-              <label class="flex items-center gap-2.5 p-2 bg-slate-900 border border-slate-800 rounded-xl hover:border-purple-500/50 cursor-pointer">
-                <input type="checkbox" value="${c}" class="modal-cell-checkbox rounded border-slate-700 bg-slate-950 text-purple-500 focus:ring-0" checked>
-                <span class="text-xs font-bold text-slate-200">Cell ${c}</span>
-              </label>
-            `).join('')}
+          <div id="modalCellGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto custom-scrollbar p-1 border border-slate-800/80 rounded-xl bg-slate-950/50">
+            ${buildModalCellCheckboxesHtml(state.cells)}
           </div>
         </div>
       `;
@@ -1843,10 +2035,10 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <label class="text-xs font-black text-pink-300">Select Target Objects (${state.siteKey}):</label>
               <div class="flex items-center gap-2">
-                <input type="text" id="modalSiteSearch" placeholder="🔍 Search object..." onkeyup="filterModalSiteList()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white focus:border-pink-500 focus:outline-none font-mono">
-                <button onclick="document.querySelectorAll('.modal-site-checkbox').forEach(c=>c.checked=true)" class="text-pink-400 text-[11px] font-bold hover:underline">Select All</button>
+                <input type="text" id="modalSiteSearch" placeholder="🔍 Search object... (comma-separate for multiple)" onkeyup="filterModalSiteList()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white focus:border-pink-500 focus:outline-none font-mono w-64">
+                <button onclick="document.querySelectorAll('.modal-site-checkbox').forEach(c=>c.checked=true); refreshModalCellSection();" class="text-pink-400 text-[11px] font-bold hover:underline">Select All</button>
                 <span class="text-slate-600 text-[11px]">|</span>
-                <button onclick="document.querySelectorAll('.modal-site-checkbox').forEach(c=>c.checked=false)" class="text-pink-400 text-[11px] font-bold hover:underline">Unselect All</button>
+                <button onclick="document.querySelectorAll('.modal-site-checkbox').forEach(c=>c.checked=false); refreshModalCellSection();" class="text-pink-400 text-[11px] font-bold hover:underline">Unselect All</button>
               </div>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1 border border-slate-800/80 rounded-xl bg-slate-950/50">${siteOptionsHtml}</div>
@@ -2886,6 +3078,19 @@
     /* ============================================================
        SITE READINESS ANALYSIS (CUSTOMER ACCEPTANCE)
     ============================================================ */
+    // Switches Site Readiness between evaluating whole sites (all cells blended into one daily
+    // average) and individual cells (each site+cell pair evaluated on its own). Doesn't auto-rerun —
+    // click "Run Readiness Check" to apply it, same as any other readiness setting.
+    function setReadinessGranularity(mode) {
+      state.readinessGranularity = mode;
+      const siteBtn = document.getElementById('readinessGranularitySiteBtn');
+      const cellBtn = document.getElementById('readinessGranularityCellBtn');
+      if (siteBtn) siteBtn.className = 'px-3 py-1 rounded-lg text-[11px] font-bold border transition-all ' +
+        (mode === 'SITE' ? 'bg-emerald-500/30 border-emerald-400 text-emerald-200' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-emerald-600');
+      if (cellBtn) cellBtn.className = 'px-3 py-1 rounded-lg text-[11px] font-bold border transition-all ' +
+        (mode === 'CELL' ? 'bg-emerald-500/30 border-emerald-400 text-emerald-200' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-emerald-600');
+    }
+
     function generateSiteReadinessReport() {
       const container = document.getElementById('siteReadinessContainer');
       if (!state.dataset || state.dataset.length === 0) {
@@ -2927,12 +3132,12 @@
           ⚠️ Warning: Dataset only contains ${evalTimestamps.length} unique timestamps, but ${lookbackDays} days were requested. Evaluating over available ${evalTimestamps.length} timestamps.
         </div>` : '';
 
-      const readinessResults = [];
-
-      sitesToEvaluate.forEach(site => {
-        const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
+      // Evaluates one "object" (either a whole site, or a single site+cell pair) against the selected
+      // KPIs over the evaluation window. Shared by both the Site-level and Cell-level granularity
+      // paths below so the actual pass/fail logic never diverges between them.
+      function evaluateReadinessForObject(objectLabel, objectRows) {
         const kpiEvaluations = [];
-        let siteIsReady = true;
+        let objectIsReady = true;
 
         selectedKpis.forEach(kpi => {
           const thresh = state.kpiThresholds[kpi] || {};
@@ -2945,7 +3150,7 @@
           let failedDays = 0;
 
           evalTimestamps.forEach(ts => {
-            const rowsForTs = siteRows.filter(d => d[timeCol] === ts);
+            const rowsForTs = objectRows.filter(d => d[timeCol] === ts);
             const vals = rowsForTs.map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
 
             // Missing KPI data for a day is a failed day for customer acceptance — can't confirm health.
@@ -2967,7 +3172,7 @@
           else status = 'PASS';
 
           const isKpiOk = status === 'PASS';
-          if (status === 'FAIL') siteIsReady = false;
+          if (status === 'FAIL') objectIsReady = false;
 
           kpiEvaluations.push({
             kpi: kpi,
@@ -2979,12 +3184,40 @@
           });
         });
 
-        readinessResults.push({
-          site: site,
-          isReady: siteIsReady,
-          kpiEvaluations: kpiEvaluations
+        return { site: objectLabel, isReady: objectIsReady, kpiEvaluations: kpiEvaluations };
+      }
+
+      const readinessResults = [];
+      const granularity = state.readinessGranularity || 'SITE';
+
+      if (granularity === 'CELL' && !state.isSiteLevelOnly && state.cellKey) {
+        // Cell-level: each site+cell pair is evaluated as its own object, instead of blending every
+        // cell of a site into one average — needed for 2G/3G where a site's cells are its own unique
+        // identities, and a per-site average can hide one bad cell among several good ones.
+        const seen = new Set();
+        const pairs = [];
+        state.dataset.forEach(d => {
+          const site = String(d[state.siteKey]);
+          if (!sitesToEvaluate.includes(site)) return;
+          const cell = String(d[state.cellKey]);
+          if (!cell) return;
+          const key = site + '||' + cell;
+          if (seen.has(key)) return;
+          seen.add(key);
+          pairs.push({ site, cell });
         });
-      });
+
+        pairs.forEach(({ site, cell }) => {
+          const objectRows = state.dataset.filter(d => String(d[state.siteKey]) === site && String(d[state.cellKey]) === cell);
+          readinessResults.push(evaluateReadinessForObject(`${site} • Cell ${cell}`, objectRows));
+        });
+      } else {
+        // Site-level (default/unchanged): every cell of the site is blended into one daily average.
+        sitesToEvaluate.forEach(site => {
+          const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
+          readinessResults.push(evaluateReadinessForObject(site, siteRows));
+        });
+      }
 
       state.lastReadinessResults = readinessResults;
       state.lastReadinessMeta = {
@@ -2995,7 +3228,8 @@
         siteFilter: selectedSites.length === state.sites.length ? 'ALL' : [...selectedSites],
         selectedKpis: [...selectedKpis],
         timestamps: [...evalTimestamps],
-        warningHtml: warningHtml
+        warningHtml: warningHtml,
+        granularity: granularity
       };
       state.readinessStatusFilter = 'ALL';
 
@@ -3484,6 +3718,18 @@
       return `${direction === 'higher_is_worse' ? 'High' : 'Low'} ${clean}`;
     }
 
+    // Switches Bad KPI Analysis between evaluating whole sites and individual cells — same idea as
+    // setReadinessGranularity() above.
+    function setBadKpiGranularity(mode) {
+      state.badKpiGranularity = mode;
+      const siteBtn = document.getElementById('badKpiGranularitySiteBtn');
+      const cellBtn = document.getElementById('badKpiGranularityCellBtn');
+      if (siteBtn) siteBtn.className = 'px-3 py-1 rounded-lg text-[11px] font-bold border transition-all ' +
+        (mode === 'SITE' ? 'bg-rose-500/30 border-rose-400 text-rose-200' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-rose-600');
+      if (cellBtn) cellBtn.className = 'px-3 py-1 rounded-lg text-[11px] font-bold border transition-all ' +
+        (mode === 'CELL' ? 'bg-rose-500/30 border-rose-400 text-rose-200' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-rose-600');
+    }
+
     function generateBadKpiAnalysis() {
       const container = document.getElementById('badKpiAnalysisContainer');
       if (!state.dataset || state.dataset.length === 0) {
@@ -3502,10 +3748,10 @@
       const timeCol = state.dateKey;
       const allTimestamps = Array.from(new Set(state.dataset.map(d => d[timeCol]))).sort();
       const evalTimestamps = allTimestamps.slice(-lookbackDays);
-      const results = [];
 
-      selectedSites.forEach(site => {
-        const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
+      // Evaluates one "object" (either a whole site, or a single site+cell pair) for degraded KPIs.
+      // Shared by both the Site-level and Cell-level granularity paths so the logic never diverges.
+      function evaluateBadKpisForObject(objectLabel, objectRows) {
         const badKpis = [];
 
         selectedKpis.forEach(kpi => {
@@ -3520,12 +3766,10 @@
           const rank = { critical: 3, warning: 2, target: 1 };
 
           evalTimestamps.forEach(ts => {
-            const vals = siteRows.filter(d => d[timeCol] === ts).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
+            const vals = objectRows.filter(d => d[timeCol] === ts).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
             if (vals.length === 0) { failedDays++; return; }
             if (!hasAnyActiveBound) return; // no active threshold — this KPI isn't evaluable, skip
 
-            // Correctly checks whichever of Target/Warning/Critical are actually turned on, at the
-            // right severity — previously this only ever compared against `target`.
             const dayAvg = vals.reduce((a,b) => a+b, 0) / vals.length;
             const hit = evaluateSingleValue(dayAvg, thresh);
             if (hit) {
@@ -3553,11 +3797,39 @@
           }
         });
 
-        results.push({ site, badKpis, status: badKpis.length > 0 ? 'ISSUES FOUND' : 'ALL SELECTED KPIs OK' });
-      });
+        return { site: objectLabel, badKpis, status: badKpis.length > 0 ? 'ISSUES FOUND' : 'ALL SELECTED KPIs OK' };
+      }
+
+      const results = [];
+      const granularity = state.badKpiGranularity || 'SITE';
+
+      if (granularity === 'CELL' && !state.isSiteLevelOnly && state.cellKey) {
+        const seen = new Set();
+        const pairs = [];
+        state.dataset.forEach(d => {
+          const site = String(d[state.siteKey]);
+          if (!selectedSites.includes(site)) return;
+          const cell = String(d[state.cellKey]);
+          if (!cell) return;
+          const key = site + '||' + cell;
+          if (seen.has(key)) return;
+          seen.add(key);
+          pairs.push({ site, cell });
+        });
+
+        pairs.forEach(({ site, cell }) => {
+          const objectRows = state.dataset.filter(d => String(d[state.siteKey]) === site && String(d[state.cellKey]) === cell);
+          results.push(evaluateBadKpisForObject(`${site} • Cell ${cell}`, objectRows));
+        });
+      } else {
+        selectedSites.forEach(site => {
+          const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
+          results.push(evaluateBadKpisForObject(site, siteRows));
+        });
+      }
 
       state.badKpiResults = results;
-      state.badKpiMeta = { requestedDays: lookbackDays, evaluatedDays: evalTimestamps.length, selectedSites: [...selectedSites], selectedKpis: [...selectedKpis], timestamps: [...evalTimestamps] };
+      state.badKpiMeta = { requestedDays: lookbackDays, evaluatedDays: evalTimestamps.length, selectedSites: [...selectedSites], selectedKpis: [...selectedKpis], timestamps: [...evalTimestamps], granularity };
 
       const warning = evalTimestamps.length < lookbackDays ? `<div class="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-amber-300 font-mono text-xs">⚠️ Dataset contains ${evalTimestamps.length} unique timestamps; ${lookbackDays} requested. Analysis uses the available timestamps.</div>` : '';
       container.innerHTML = `
@@ -3933,7 +4205,16 @@
           const data = new Uint8Array(evt.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          state.comparison.dataset = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
+          state.comparison.dataset = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: "" });
+          // Same two-layer percent-scale correction as the main dataset, so comparisons aren't skewed
+          // by one side being scaled and the other not.
+          const compLayer1 = getPercentFormattedColumns(worksheet);
+          applyPercentScaling(state.comparison.dataset, compLayer1);
+          if (state.comparison.dataset.length > 0) {
+            const compKeysForFallback = Object.keys(state.comparison.dataset[0]);
+            const compLayer2 = getFallbackPercentColumns(state.comparison.dataset, compKeysForFallback, compLayer1);
+            applyPercentScaling(state.comparison.dataset, compLayer2);
+          }
           runPeriodComparison();
         } catch (err) { alert('Error reading comparison file.'); }
       };
