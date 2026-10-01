@@ -1231,17 +1231,6 @@
       return false; // anything not explicitly recognized is left alone — never guessed
     }
 
-    // Companion to isNearHundredPercentKpiName() above, for KPIs that are healthy near 0% (Drop Rate,
-    // eRAB Drop Rate) rather than near 100%. These legitimately have small values (a real 0.44% drop
-    // rate is completely normal), so this uses a much TIGHTER cutoff than the near-100 check — it only
-    // fires when a value is suspiciously close to zero (≤0.05), which is where a genuine already-correct
-    // reading becomes implausible (a real drop rate under 0.05% is essentially a perfect network, rare
-    // enough that it's far more likely the value is a fraction still needing ×100, e.g. 0.0044 meaning
-    // 0.44%). A genuinely healthy reading like 0.44 or 1.2 stays completely untouched either way.
-    function isNearZeroPercentKpiName(kpiName) {
-      return (kpiName || '').toLowerCase().includes('drop');
-    }
-
     // Reads Excel's own cell number-format codes (and, as a backup, the pre-computed display text)
     // directly from the worksheet — this is Layer 1, ground truth from the file itself.
     function getPercentFormattedColumns(worksheet) {
@@ -1279,26 +1268,19 @@
     }
 
     // Layer 2: for columns NOT caught by Layer 1 (no Excel format metadata present at all — typically
-    // CSV/JSON, or an XLSX exported without preserving formatting), catches two narrow, low-risk cases:
-    // a near-100%-type KPI whose values are suspiciously all in the 0–1.5 range, OR a near-0%-type KPI
-    // (Drop Rate) whose values are suspiciously all ≤0.05 — both scoped tight enough that a genuinely
-    // correct reading is never touched.
+    // CSV/JSON, or an XLSX exported without preserving formatting), catches the narrow, low-risk case of
+    // a near-100%-type KPI whose values are suspiciously all in the 0–1.5 range.
     function getFallbackPercentColumns(dataset, kpiColumns, alreadyHandledColumns) {
       const percentCols = new Set();
       kpiColumns.forEach(kpi => {
         if (alreadyHandledColumns.has(kpi)) return; // Layer 1 already resolved this column with certainty
-
-        let cutoff;
-        if (isNearHundredPercentKpiName(kpi)) cutoff = 1.5;
-        else if (isNearZeroPercentKpiName(kpi)) cutoff = 0.05;
-        else return; // not an eligible KPI type — left alone
-
+        if (!isNearHundredPercentKpiName(kpi)) return;
         let checked = 0, suspicious = 0;
         for (let i = 0; i < dataset.length; i++) {
           const v = parseMetricValue(dataset[i][kpi], kpi);
           if (v === null || v === 0) continue;
           checked++;
-          if (Math.abs(v) <= cutoff) suspicious++;
+          if (Math.abs(v) <= 1.5) suspicious++;
           if (checked >= 50) break;
         }
         if (checked > 0 && suspicious / checked > 0.7) percentCols.add(kpi);
