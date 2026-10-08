@@ -1231,6 +1231,17 @@
       return false; // anything not explicitly recognized is left alone — never guessed
     }
 
+    // Companion to isNearHundredPercentKpiName() above, for KPIs that are healthy near 0% (Drop Rate,
+    // eRAB Drop Rate) rather than near 100%. These legitimately have small values (a real 0.44% drop
+    // rate is completely normal), so this uses a much TIGHTER cutoff than the near-100 check — it only
+    // fires when a value is suspiciously close to zero (≤0.05), which is where a genuine already-correct
+    // reading becomes implausible (a real drop rate under 0.05% is essentially a perfect network, rare
+    // enough that it's far more likely the value is a fraction still needing ×100, e.g. 0.0044 meaning
+    // 0.44%). A genuinely healthy reading like 0.44 or 1.2 stays completely untouched either way.
+    function isNearZeroPercentKpiName(kpiName) {
+      return (kpiName || '').toLowerCase().includes('drop');
+    }
+
     // Reads Excel's own cell number-format codes (and, as a backup, the pre-computed display text)
     // directly from the worksheet — this is Layer 1, ground truth from the file itself.
     function getPercentFormattedColumns(worksheet) {
@@ -1268,19 +1279,26 @@
     }
 
     // Layer 2: for columns NOT caught by Layer 1 (no Excel format metadata present at all — typically
-    // CSV/JSON, or an XLSX exported without preserving formatting), catches the narrow, low-risk case of
-    // a near-100%-type KPI whose values are suspiciously all in the 0–1.5 range.
+    // CSV/JSON, or an XLSX exported without preserving formatting), catches two narrow, low-risk cases:
+    // a near-100%-type KPI whose values are suspiciously all in the 0–1.5 range, OR a near-0%-type KPI
+    // (Drop Rate) whose values are suspiciously all ≤0.05 — both scoped tight enough that a genuinely
+    // correct reading is never touched.
     function getFallbackPercentColumns(dataset, kpiColumns, alreadyHandledColumns) {
       const percentCols = new Set();
       kpiColumns.forEach(kpi => {
         if (alreadyHandledColumns.has(kpi)) return; // Layer 1 already resolved this column with certainty
-        if (!isNearHundredPercentKpiName(kpi)) return;
+
+        let cutoff;
+        if (isNearHundredPercentKpiName(kpi)) cutoff = 1.5;
+        else if (isNearZeroPercentKpiName(kpi)) cutoff = 0.05;
+        else return; // not an eligible KPI type — left alone
+
         let checked = 0, suspicious = 0;
         for (let i = 0; i < dataset.length; i++) {
           const v = parseMetricValue(dataset[i][kpi], kpi);
           if (v === null || v === 0) continue;
           checked++;
-          if (Math.abs(v) <= 1.5) suspicious++;
+          if (Math.abs(v) <= cutoff) suspicious++;
           if (checked >= 50) break;
         }
         if (checked > 0 && suspicious / checked > 0.7) percentCols.add(kpi);
@@ -2550,6 +2568,18 @@
 
     function renderMultiPlots() {
       const grid = document.getElementById('chartsGrid');
+
+      // Destroy every existing Chart.js instance before wiping the grid's DOM. Without this, clearing
+      // the grid via innerHTML='' only removes the <canvas> elements — the Chart.js objects themselves
+      // stay alive in memory (still hooked into Chart.js's internal resize/animation listeners), and
+      // state.chartInstances kept growing with orphaned entries on every re-plot. That accumulation is
+      // what made the page progressively more sluggish and inconsistently responsive the longer a
+      // session went on, especially after plotting more than once.
+      Object.keys(state.chartInstances).forEach(id => {
+        if (state.chartInstances[id]) state.chartInstances[id].destroy();
+      });
+      state.chartInstances = {};
+
       grid.innerHTML = '';
 
       const checkedKpis = Array.from(document.querySelectorAll('.kpi-checkbox:checked')).map(cb => cb.value);
@@ -2559,28 +2589,64 @@
       }
 
       state.chartLocalConfigs = {};
-      
-      checkedKpis.forEach(kpi => {
+      const globalChartType = document.getElementById('globalChartTypeSelect').value;
+
+      // Charts are built ONE AT A TIME on a short timer instead of all in a single blocking loop. Each
+      // chart still does real work (scanning the dataset, rendering with Chart.js) — plotting many
+      // charts back-to-back with zero break between them is exactly what freezes the browser's main
+      // thread long enough to trigger the "page unresponsive" warning on large files. Yielding to the
+      // browser between each chart (via setTimeout) keeps the page responsive the whole time, at the
+      // cost of the full set taking a little longer to finish appearing — a visible progress line is
+      // shown while it works so it reads as "working," not "frozen."
+      const progressEl = document.createElement('div');
+      progressEl.id = 'chartBuildProgress';
+      // Deliberately NOT using the 'col-span-2' class here — the single-chart-add function elsewhere
+      // detects the "no charts yet" empty-state placeholder via `grid.querySelector('.col-span-2')` and
+      // wipes the whole grid when it finds one. This progress indicator must never be mistaken for that
+      // placeholder, or adding one more chart while a batch plot is still mid-build would destroy every
+      // chart already built so far. col-span-full gives the same full-width look without the collision.
+      progressEl.className = 'col-span-full glass-card p-4 text-center text-xs text-slate-400 font-mono';
+      progressEl.innerText = `Plotting 0 / ${checkedKpis.length} charts...`;
+      grid.appendChild(progressEl);
+
+      let index = 0;
+      function buildNextChart() {
+        if (index >= checkedKpis.length) {
+          const doneEl = document.getElementById('chartBuildProgress');
+          if (doneEl) doneEl.remove();
+          renderSelectByTypeMenu();
+          return;
+        }
+
+        const kpi = checkedKpis[index];
         const chartId = 'chart_card_' + Math.random().toString(36).substr(2, 9);
         state.chartLocalConfigs[chartId] = {
           kpi: kpi,
           sites: [...state.globalBatchSites],
           cells: [...state.globalBatchCells],
-          type: document.getElementById('globalChartTypeSelect').value
+          type: globalChartType
         };
 
         const cardWrapper = document.createElement('div');
         cardWrapper.id = `card_${chartId}`;
         cardWrapper.className = 'glass-card p-4 space-y-3 flex flex-col justify-between transition-all duration-300 hover:border-pink-500/50';
         cardWrapper.setAttribute('data-kpi', kpi);
-
         cardWrapper.innerHTML = generateChartCardHTML(chartId, kpi);
-        grid.appendChild(cardWrapper);
+
+        const progressRef = document.getElementById('chartBuildProgress');
+        if (progressRef) grid.insertBefore(cardWrapper, progressRef);
+        else grid.appendChild(cardWrapper);
 
         updateChartInPlace(chartId);
-      });
 
-      renderSelectByTypeMenu();
+        index++;
+        const progressRef2 = document.getElementById('chartBuildProgress');
+        if (progressRef2) progressRef2.innerText = `Plotting ${index} / ${checkedKpis.length} charts...`;
+
+        setTimeout(buildNextChart, 0);
+      }
+
+      buildNextChart();
     }
 
     function updateChartTypeInPlace(chartId, newType) {
@@ -2618,15 +2684,30 @@
       const colors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#d946ef'];
       let colorIdx = 0;
 
+      // Single pass over `filtered` builds a lookup index (grouped by site, or by site+cell pair, then
+      // by timestamp) that every series below reuses via O(1) lookups. This replaces re-scanning the
+      // full `filtered` array once per site/pair AND again per timestamp within it — the nested
+      // re-scanning (effectively rows × sites × timestamps) is what caused large files to lag or freeze
+      // the browser when plotting.
       if (state.isSiteLevelOnly || granularity === 'SITE') {
+        const siteTimeMap = new Map(); // site -> Map(timestamp -> values[])
+        filtered.forEach(d => {
+          const site = String(d[state.siteKey]);
+          const ts = d[xCol];
+          const v = parseMetricValue(d[cfg.kpi], cfg.kpi);
+          if (v === null) return;
+          if (!siteTimeMap.has(site)) siteTimeMap.set(site, new Map());
+          const tsMap = siteTimeMap.get(site);
+          if (!tsMap.has(ts)) tsMap.set(ts, []);
+          tsMap.get(ts).push(v);
+        });
+
         const sitesToPlot = cfg.sites.includes('ALL') ? state.sites : cfg.sites;
         sitesToPlot.forEach(site => {
-          const siteRows = filtered.filter(d => String(d[state.siteKey]) === site);
+          const tsMap = siteTimeMap.get(site);
           const dataPoints = timestamps.map(ts => {
-            const matches = siteRows.filter(d => d[xCol] === ts);
-            if (matches.length === 0) return null;
-            const vals = matches.map(m => parseMetricValue(m[cfg.kpi], cfg.kpi)).filter(v => v !== null);
-            if (vals.length === 0) return null;
+            const vals = tsMap ? tsMap.get(ts) : null;
+            if (!vals || vals.length === 0) return null;
             return vals.reduce((a, b) => a + b, 0) / vals.length;
           });
 
@@ -2646,21 +2727,26 @@
           });
         });
       } else {
-        const pairs = [];
+        // pairTimeMap keeps the FIRST value seen for a given (pair, timestamp) — matching the original
+        // code's `.find()` behavior exactly (including preserving a null if that first row's KPI field
+        // was empty, rather than searching further for a non-null one).
+        const pairTimeMap = new Map(); // "site||cell" -> Map(timestamp -> value)
+        const pairMeta = new Map();    // "site||cell" -> { site, cell }
         filtered.forEach(d => {
           const s = String(d[state.siteKey]);
           const c = String(d[state.cellKey]);
-          if (s && c && !pairs.some(p => p.site === s && p.cell === c)) {
-            pairs.push({ site: s, cell: c });
-          }
+          if (!s || !c) return;
+          const key = s + '||' + c;
+          if (!pairMeta.has(key)) pairMeta.set(key, { site: s, cell: c });
+          if (!pairTimeMap.has(key)) pairTimeMap.set(key, new Map());
+          const tsMap = pairTimeMap.get(key);
+          const ts = d[xCol];
+          if (!tsMap.has(ts)) tsMap.set(ts, parseMetricValue(d[cfg.kpi], cfg.kpi));
         });
 
-        pairs.forEach(pair => {
-          const pairRows = filtered.filter(d => String(d[state.siteKey]) === pair.site && String(d[state.cellKey]) === pair.cell);
-          const dataPoints = timestamps.map(ts => {
-            const match = pairRows.find(d => d[xCol] === ts);
-            return match ? parseMetricValue(match[cfg.kpi], cfg.kpi) : null;
-          });
+        pairMeta.forEach((pair, key) => {
+          const tsMap = pairTimeMap.get(key);
+          const dataPoints = timestamps.map(ts => (tsMap.has(ts) ? tsMap.get(ts) : null));
 
           const color = colors[colorIdx % colors.length];
           colorIdx++;
@@ -2760,6 +2846,8 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          resizeDelay: 100,
+          animation: false,
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -3135,7 +3223,10 @@
       // Evaluates one "object" (either a whole site, or a single site+cell pair) against the selected
       // KPIs over the evaluation window. Shared by both the Site-level and Cell-level granularity
       // paths below so the actual pass/fail logic never diverges between them.
-      function evaluateReadinessForObject(objectLabel, objectRows) {
+      // tsIndex is a Map<timestamp, rows[]> built ONCE per object (see below) and reused across every
+      // KPI here — this replaces re-scanning the object's full row list per KPI per timestamp, which is
+      // what made large files lag badly (O(kpis × timestamps × rows) collapsed down to O(1) lookups).
+      function evaluateReadinessForObject(objectLabel, tsIndex) {
         const kpiEvaluations = [];
         let objectIsReady = true;
 
@@ -3150,7 +3241,7 @@
           let failedDays = 0;
 
           evalTimestamps.forEach(ts => {
-            const rowsForTs = objectRows.filter(d => d[timeCol] === ts);
+            const rowsForTs = tsIndex.get(ts) || [];
             const vals = rowsForTs.map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
 
             // Missing KPI data for a day is a failed day for customer acceptance — can't confirm health.
@@ -3187,6 +3278,18 @@
         return { site: objectLabel, isReady: objectIsReady, kpiEvaluations: kpiEvaluations };
       }
 
+      // Groups rows by timestamp within a single object's row list — built once per object so every
+      // KPI above reuses the same index instead of re-scanning.
+      function buildTimestampIndex(rows) {
+        const map = new Map();
+        rows.forEach(r => {
+          const ts = r[timeCol];
+          if (!map.has(ts)) map.set(ts, []);
+          map.get(ts).push(r);
+        });
+        return map;
+      }
+
       const readinessResults = [];
       const granularity = state.readinessGranularity || 'SITE';
 
@@ -3194,28 +3297,41 @@
         // Cell-level: each site+cell pair is evaluated as its own object, instead of blending every
         // cell of a site into one average — needed for 2G/3G where a site's cells are its own unique
         // identities, and a per-site average can hide one bad cell among several good ones.
-        const seen = new Set();
-        const pairs = [];
+        // Single pass over the dataset groups rows straight into per-pair buckets — this replaces the
+        // old approach of re-scanning the entire dataset once per pair (O(pairs × rows)), which was the
+        // main cause of lag/freezing on large files.
+        const pairRowsMap = new Map(); // "site||cell" -> rows[]
+        const pairMeta = [];
+        const seenKeys = new Set();
         state.dataset.forEach(d => {
           const site = String(d[state.siteKey]);
           if (!sitesToEvaluate.includes(site)) return;
           const cell = String(d[state.cellKey]);
           if (!cell) return;
           const key = site + '||' + cell;
-          if (seen.has(key)) return;
-          seen.add(key);
-          pairs.push({ site, cell });
+          if (!seenKeys.has(key)) { seenKeys.add(key); pairMeta.push({ site, cell, key }); }
+          if (!pairRowsMap.has(key)) pairRowsMap.set(key, []);
+          pairRowsMap.get(key).push(d);
         });
 
-        pairs.forEach(({ site, cell }) => {
-          const objectRows = state.dataset.filter(d => String(d[state.siteKey]) === site && String(d[state.cellKey]) === cell);
-          readinessResults.push(evaluateReadinessForObject(`${site} • Cell ${cell}`, objectRows));
+        pairMeta.forEach(({ site, cell, key }) => {
+          const tsIndex = buildTimestampIndex(pairRowsMap.get(key));
+          readinessResults.push(evaluateReadinessForObject(`${site} • Cell ${cell}`, tsIndex));
         });
       } else {
-        // Site-level (default/unchanged): every cell of the site is blended into one daily average.
+        // Site-level (default/unchanged result): every cell of the site is blended into one daily
+        // average. Same single-pass grouping optimization as above.
+        const siteRowsMap = new Map();
+        state.dataset.forEach(d => {
+          const site = String(d[state.siteKey]);
+          if (!sitesToEvaluate.includes(site)) return;
+          if (!siteRowsMap.has(site)) siteRowsMap.set(site, []);
+          siteRowsMap.get(site).push(d);
+        });
+
         sitesToEvaluate.forEach(site => {
-          const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
-          readinessResults.push(evaluateReadinessForObject(site, siteRows));
+          const tsIndex = buildTimestampIndex(siteRowsMap.get(site) || []);
+          readinessResults.push(evaluateReadinessForObject(site, tsIndex));
         });
       }
 
@@ -3751,7 +3867,10 @@
 
       // Evaluates one "object" (either a whole site, or a single site+cell pair) for degraded KPIs.
       // Shared by both the Site-level and Cell-level granularity paths so the logic never diverges.
-      function evaluateBadKpisForObject(objectLabel, objectRows) {
+      // tsIndex is a Map<timestamp, rows[]> built ONCE per object (see buildTimestampIndex below) and
+      // reused across every KPI — this replaces re-scanning the object's full row list per KPI per
+      // timestamp, which is what made large files lag badly.
+      function evaluateBadKpisForObject(objectLabel, tsIndex) {
         const badKpis = [];
 
         selectedKpis.forEach(kpi => {
@@ -3766,7 +3885,8 @@
           const rank = { critical: 3, warning: 2, target: 1 };
 
           evalTimestamps.forEach(ts => {
-            const vals = objectRows.filter(d => d[timeCol] === ts).map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
+            const rowsForTs = tsIndex.get(ts) || [];
+            const vals = rowsForTs.map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
             if (vals.length === 0) { failedDays++; return; }
             if (!hasAnyActiveBound) return; // no active threshold — this KPI isn't evaluable, skip
 
@@ -3800,31 +3920,52 @@
         return { site: objectLabel, badKpis, status: badKpis.length > 0 ? 'ISSUES FOUND' : 'ALL SELECTED KPIs OK' };
       }
 
+      function buildTimestampIndex(rows) {
+        const map = new Map();
+        rows.forEach(r => {
+          const ts = r[timeCol];
+          if (!map.has(ts)) map.set(ts, []);
+          map.get(ts).push(r);
+        });
+        return map;
+      }
+
       const results = [];
       const granularity = state.badKpiGranularity || 'SITE';
 
       if (granularity === 'CELL' && !state.isSiteLevelOnly && state.cellKey) {
-        const seen = new Set();
-        const pairs = [];
+        // Single pass over the dataset groups rows straight into per-pair buckets — replaces the old
+        // approach of re-scanning the entire dataset once per pair, which caused lag on large files.
+        const pairRowsMap = new Map();
+        const pairMeta = [];
+        const seenKeys = new Set();
         state.dataset.forEach(d => {
           const site = String(d[state.siteKey]);
           if (!selectedSites.includes(site)) return;
           const cell = String(d[state.cellKey]);
           if (!cell) return;
           const key = site + '||' + cell;
-          if (seen.has(key)) return;
-          seen.add(key);
-          pairs.push({ site, cell });
+          if (!seenKeys.has(key)) { seenKeys.add(key); pairMeta.push({ site, cell, key }); }
+          if (!pairRowsMap.has(key)) pairRowsMap.set(key, []);
+          pairRowsMap.get(key).push(d);
         });
 
-        pairs.forEach(({ site, cell }) => {
-          const objectRows = state.dataset.filter(d => String(d[state.siteKey]) === site && String(d[state.cellKey]) === cell);
-          results.push(evaluateBadKpisForObject(`${site} • Cell ${cell}`, objectRows));
+        pairMeta.forEach(({ site, cell, key }) => {
+          const tsIndex = buildTimestampIndex(pairRowsMap.get(key));
+          results.push(evaluateBadKpisForObject(`${site} • Cell ${cell}`, tsIndex));
         });
       } else {
+        const siteRowsMap = new Map();
+        state.dataset.forEach(d => {
+          const site = String(d[state.siteKey]);
+          if (!selectedSites.includes(site)) return;
+          if (!siteRowsMap.has(site)) siteRowsMap.set(site, []);
+          siteRowsMap.get(site).push(d);
+        });
+
         selectedSites.forEach(site => {
-          const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
-          results.push(evaluateBadKpisForObject(site, siteRows));
+          const tsIndex = buildTimestampIndex(siteRowsMap.get(site) || []);
+          results.push(evaluateBadKpisForObject(site, tsIndex));
         });
       }
 
@@ -3995,13 +4136,22 @@
       // formatting/colors herself in Excel from this).
       const heatmapExportRows = [];
 
+      // Group every row by site in a single pass, reused across every KPI below — replaces re-scanning
+      // the full dataset once per site per KPI (O(sites × kpis × rows)), which caused lag on large files.
+      const siteRowsMap = new Map();
+      state.dataset.forEach(d => {
+        const site = String(d[state.siteKey]);
+        if (!siteRowsMap.has(site)) siteRowsMap.set(site, []);
+        siteRowsMap.get(site).push(d);
+      });
+
       targetSites.forEach(site => {
         html += `<tr class="hover:bg-slate-900/80"><td class="p-3 font-bold text-slate-200">${site}</td>`;
         const exportRow = { 'Site / Object': site };
+        const siteRows = siteRowsMap.get(site) || [];
 
         activeKpis.forEach(kpi => {
           const thresh = state.kpiThresholds[kpi] || {};
-          const siteRows = state.dataset.filter(d => String(d[state.siteKey]) === site);
           const vals = siteRows.map(r => parseMetricValue(r[kpi], kpi)).filter(v => v !== null);
           const auditLookback = state.auditLookbackDays || 3;
           const trailingVals = vals.slice(-auditLookback);
@@ -4183,6 +4333,8 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          resizeDelay: 100,
+          animation: false,
           interaction: { mode: 'index', intersect: false },
           scales: {
             yA: { type: 'linear', position: 'left', title: { display: true, text: kpiA } },
