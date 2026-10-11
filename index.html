@@ -1183,6 +1183,17 @@
       if (zoneId === 'insights') refreshInsightsTab();
     }
 
+    // Scales each line's dot size down as the number of plotted timestamps grows, so a chart with
+    // thousands of points doesn't ask Chart.js to draw thousands of circles on every frame — that
+    // per-point draw cost (not just the initial render, but every redraw/hover/resize afterward) was
+    // a real source of lag on bigger files. Small datasets still get nicely visible points.
+    function autoPointRadius(pointCount) {
+      if (!pointCount || pointCount <= 30) return 3;
+      if (pointCount <= 100) return 2;
+      if (pointCount <= 300) return 1;
+      return 0;
+    }
+
     function parseMetricValue(val, kpiName) {
       if (val === undefined || val === null || val === '') return null;
       let num = NaN;
@@ -2722,7 +2733,8 @@
             borderWidth: 2,
             tension: cfg.type.includes('smooth') ? 0.4 : 0,
             stepped: cfg.type === 'line_stepped',
-            pointRadius: cfg.type.includes('nopoints') ? 0 : 3,
+            pointRadius: cfg.type.includes('nopoints') ? 0 : autoPointRadius(timestamps.length),
+            pointHoverRadius: cfg.type.includes('nopoints') ? 3 : autoPointRadius(timestamps.length) + 2,
             fill: cfg.type === 'area'
           });
         });
@@ -2759,7 +2771,8 @@
             borderWidth: 2,
             tension: cfg.type.includes('smooth') ? 0.4 : 0,
             stepped: cfg.type === 'line_stepped',
-            pointRadius: cfg.type.includes('nopoints') ? 0 : 3,
+            pointRadius: cfg.type.includes('nopoints') ? 0 : autoPointRadius(timestamps.length),
+            pointHoverRadius: cfg.type.includes('nopoints') ? 3 : autoPointRadius(timestamps.length) + 2,
             fill: cfg.type === 'area'
           });
         });
