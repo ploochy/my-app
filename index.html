@@ -2682,7 +2682,24 @@
         filtered = filtered.filter(d => cfg.cells.includes(String(d[state.cellKey])));
       }
 
-      const timestamps = Array.from(new Set(filtered.map(d => d[xCol]))).sort();
+      // The X axis is built from the WHOLE dataset, not just the sites being plotted. If it were built
+      // from the filtered rows only, a day where the selected site was down (no rows at all) would simply
+      // vanish from the axis and the line would jump from 21 Oct straight to 23 Oct. Using every
+      // timestamp in the file keeps the date in place and leaves a blank gap in that site's line,
+      // exactly as it already did when several sites were plotted together.
+      // ...but trimmed to the span where the PLOTTED sites actually have data (first to last reported
+      // timestamp). Days inside that span stay on the axis (so outages show as gaps), while empty stretches
+      // before a site went live or after it stopped reporting are not drawn.
+      let timestamps = Array.from(new Set(state.dataset.map(d => d[xCol]))).sort();
+      if (filtered.length > 0) {
+        let minTs = null, maxTs = null;
+        filtered.forEach(d => {
+          const t = d[xCol];
+          if (minTs === null || t < minTs) minTs = t;
+          if (maxTs === null || t > maxTs) maxTs = t;
+        });
+        timestamps = timestamps.filter(t => t >= minTs && t <= maxTs);
+      }
 
       const subtitleEl = document.querySelector(`#card_${chartId} .chart-card-subtitle`);
       if (subtitleEl) {
@@ -4317,7 +4334,11 @@
       wrapper.classList.remove('hidden');
 
       const timeCol = state.dateKey;
-      const timestamps = Array.from(new Set(state.dataset.filter(d => sites.includes(String(d[state.siteKey]))).map(d => d[timeCol]))).sort();
+      let timestamps = Array.from(new Set(state.dataset.map(d => d[timeCol]))).sort(); // whole-dataset axis so a down day stays visible as a gap
+      { // trim to the span where the selected sites have data
+        const own = state.dataset.filter(d => sites.includes(String(d[state.siteKey]))).map(d => d[timeCol]);
+        if (own.length) { let lo = own[0], hi = own[0]; own.forEach(t => { if (t < lo) lo = t; if (t > hi) hi = t; }); timestamps = timestamps.filter(t => t >= lo && t <= hi); }
+      }
       const datasets = [];
       const siteColors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#84cc16'];
 
